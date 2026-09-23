@@ -87,19 +87,13 @@ Ragent AI is a production-ready **multi-agent GraphRAG platform** that orchestra
 │ Retrieval Engine                                                     │
 │ Hybrid Vector Search · Reranking · Auto-Merging · Query Rewrite      │
 │ Local / Global Graph Search · Three-Channel RRF                      │
+│ Data Stores: Milvus (Vector) · MySQL (State) · Redis (Cache) · Neo4j │
 └──────────────────────────────────┬───────────────────────────────────┘
-                                   │
-      ┌──────────────┬─────────────┼─────────────┬──────────────┐
-      │              │             │             │              │
-┌─────▼─────┐ ┌──────▼──────┐ ┌────▼─────┐ ┌─────▼─────┐
-│ Milvus    │ │ MySQL       │ │ Redis    │ │ Neo4j     │
-│ Vector DB │ │ State Store │ │ Cache    │ │ Graph DB  │
-└───────────┘ └─────────────┘ └──────────┘ └───────────┘
 ```
 
 ### Agent Routing Flow (v8)
 
-```
+<!-- Legacy ASCII diagram retained as source history; not rendered in Markdown.
                          ┌──────────────┐
                          │  User Query  │
                          └──────┬───────┘
@@ -149,6 +143,28 @@ Ragent AI is a production-ready **multi-agent GraphRAG platform** that orchestra
                ┌─────────┐         ┌───────────┐
                │  Answer  │         │  Replan   │ → Supervisor
                └─────────┘         └───────────┘   (self-correction)
+```
+-->
+
+```mermaid
+flowchart TB
+    Q[User Query] --> S[Supervisor: Intent Router]
+    S --> P[Planner v8: Complex Query Decomposition]
+    S --> R[RAG Specialist: Document Retrieval]
+    S --> G[Local / Global Graph Search]
+    S --> W[Web Searcher: Tavily]
+    S --> D[Data Analyst: Text-to-SQL]
+    S --> A[Direct Answer: Skip Critique]
+    P --> M[Synthesize: Merge Answers]
+    R --> M
+    G --> M
+    W --> M[Synthesize: Merge Answers]
+    D --> M
+    A --> ANS[Answer]
+    M --> C[Critique v8: Fact Checking]
+    C -->|valid| ANS
+    C -->|invalid; retry under 2| RP[Replan: Supplement Retrieval]
+    RP --> S
 ```
 
 ### Document Ingestion Flow

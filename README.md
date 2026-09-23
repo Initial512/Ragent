@@ -184,21 +184,15 @@ Milvus（向量库） · MySQL（会话、文档、检查点） · Redis（缓�
 ┌──────────────────────────────────▼───────────────────────────────────┐
 │ Retrieval Engine                                                     │
 │ Hybrid Search · Reranking · Auto-Merge · Local/Global Graph · RRF    │
+│ Data Stores: Milvus (Vector) · MySQL (State) · Redis (Cache) · Neo4j │
 └──────────────────────────────────┬───────────────────────────────────┘
-                                   │
-      ┌──────────────┬─────────────┼─────────────┬──────────────┐
-      │              │             │             │              │
-┌─────▼─────┐ ┌──────▼──────┐ ┌────▼─────┐ ┌─────▼─────┐
-│ Milvus    │ │ MySQL       │ │ Redis    │ │ Neo4j     │
-│ Vector DB │ │ State Store │ │ Cache    │ │ Graph DB  │
-└───────────┘ └─────────────┘ └──────────┘ └───────────┘
 ```
 
 ### 智能体路由流程（v8）
 
 用户问题先由 Supervisor 判断意图：复杂问题会先交给 Planner 生成执行计划；随后可路由至一个或多个检索/分析 Worker。结果由 Synthesize 汇总，Critique 使用已检索上下文交叉核查草稿答案。核查失败时，Replan 将缺失信息作为补充查询重新交由 Supervisor 执行，最多重试两次。无需检索的直接回答会跳过核查。
 
-```text
+<!-- 保留旧版 ASCII 图示源文本供变更记录使用；不在 Markdown 中渲染。
                          ┌──────────────┐
                          │  用户问题    │
                          └──────┬───────┘
@@ -245,6 +239,28 @@ Milvus（向量库） · MySQL（会话、文档、检查点） · Redis（缓�
                ┌─────────┐         ┌───────────┐
                │  答案   │         │  Replan   │ → Supervisor（自我纠正）
                └─────────┘         └───────────┘
+```
+-->
+
+```mermaid
+flowchart TB
+    Q[用户问题] --> S[Supervisor：意图路由]
+    S --> P[Planner v8：复杂查询拆解]
+    S --> R[RAG Specialist：文档检索]
+    S --> G[局部 / 全局图搜索]
+    S --> W[网络搜索器：Tavily]
+    S --> D[数据分析师：Text-to-SQL]
+    S --> A[直接回答：跳过核查]
+    P --> M[Synthesize：合并答案]
+    R --> M
+    G --> M
+    W --> M[Synthesize：合并答案]
+    D --> M
+    A --> ANS[答案]
+    M --> C[Critique v8：事实核查]
+    C -->|有效| ANS
+    C -->|无效，重试少于 2 次| RP[Replan：补充检索]
+    RP --> S
 ```
 
 ### 文档入库流程
