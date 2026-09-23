@@ -87,8 +87,14 @@ Ragent AI is a production-ready **multi-agent GraphRAG platform** that orchestra
 │ Retrieval Engine                                                     │
 │ Hybrid Vector Search · Reranking · Auto-Merging · Query Rewrite      │
 │ Local / Global Graph Search · Three-Channel RRF                      │
-│ Data Stores: Milvus (Vector) · MySQL (State) · Redis (Cache) · Neo4j │
 └──────────────────────────────────┬───────────────────────────────────┘
+                                   │
+                                   ▼
+                            Data Stores
+    ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐
+    │ Milvus      │  │ MySQL       │  │ Redis       │  │ Neo4j       │
+    │ Vector DB   │  │ State Store │  │ Cache/HITL  │  │ Graph DB    │
+    └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘
 ```
 
 ### Agent Routing Flow (v8)

@@ -184,8 +184,14 @@ Milvus（向量库） · MySQL（会话、文档、检查点） · Redis（缓�
 ┌──────────────────────────────────▼───────────────────────────────────┐
 │ Retrieval Engine                                                     │
 │ Hybrid Search · Reranking · Auto-Merge · Local/Global Graph · RRF    │
-│ Data Stores: Milvus (Vector) · MySQL (State) · Redis (Cache) · Neo4j │
 └──────────────────────────────────┬───────────────────────────────────┘
+                                   │
+                                   ▼
+                            Data Stores
+    ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐
+    │ Milvus      │  │ MySQL       │  │ Redis       │  │ Neo4j       │
+    │ Vector DB   │  │ State Store │  │ Cache/HITL  │  │ Graph DB    │
+    └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘
 ```
 
 ### 智能体路由流程（v8）
