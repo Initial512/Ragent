@@ -2,11 +2,11 @@
 
 # Ragent AI
 
-[中文文档](README.zh-CN.md) · [English](README.md)
+**企业级多智能体 GraphRAG 知识库助手**
 
-**Enterprise Multi-Agent GraphRAG Knowledge Base Assistant**
+[中文](README.md) · [English](README.en.md)
 
-A full-stack Retrieval-Augmented Generation platform built on LangGraph Supervisor-Workers architecture with GraphRAG semantic network capabilities. Features multi-agent collaboration, hybrid (vector + graph) retrieval, Human-in-the-Loop (HITL) interrupt/resume, and real-time streaming responses.
+基于 LangGraph Supervisor-Workers 架构构建的全栈检索增强生成平台，具备 GraphRAG 语义网络能力。支持多智能体协作、混合（向量 + 图）检索、人工介入（HITL）中断/恢复，以及实时流式回答。
 
 ![Python](https://img.shields.io/badge/Python-3.12+-3776AB?style=flat&logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?style=flat&logo=fastapi&logoColor=white)
@@ -19,61 +19,160 @@ A full-stack Retrieval-Augmented Generation platform built on LangGraph Supervis
 
 <br/>
 
-<img src="docs/img.png" width="100%" alt="Ragent AI Interface" />
+![Ragent AI 界面](docs/img.png)
 
 </div>
 
 ---
 
-## Table of Contents
+## 目录
 
-- [Overview](#overview)
-- [Architecture](#architecture)
-- [Key Features](#key-features)
-- [Tech Stack](#tech-stack)
-- [Project Structure](#project-structure)
-- [Getting Started](#getting-started)
-- [Configuration](#configuration)
-- [API Reference](#api-reference)
-- [Roadmap](#roadmap)
-
----
-
-## Overview
-
-Ragent AI is a production-ready **multi-agent GraphRAG platform** that orchestrates specialized AI workers to answer user questions by combining private document retrieval, web search, structured data analysis, and **knowledge graph traversal**. Built on **LangGraph Supervisor-Workers architecture**, it delivers accurate, source-attributed answers with full audit traceability.
-
-**Core Capabilities:**
-
-- **Multi-Agent Collaboration** — Supervisor-Workers model with 6 specialized agents: RAG Specialist, Local Graph Search, Global Graph Search, Web Searcher, Data Analyst, and Direct Answer — intelligently routed with support for parallel dispatch
-- **GraphRAG Semantic Network** — LLM-powered entity/relation extraction during document ingestion, Neo4j graph storage, Leiden community clustering, and hierarchical community summarization
-- **Hybrid Graph-Vector Retrieval** — Dense (Qwen text-embedding-v1, 1536-dim) + Sparse (BM25) + Graph triples three-channel fusion, with local search (vector → graph expansion) and global search (community summary matching) modes
-- **Three-Level Hierarchical Chunking** — L1 (1200 chars) / L2 (600 chars) / L3 (300 chars) sliding-window chunking with auto-merging retriever; L2 chunks feed graph extraction while L3 chunks are vector-indexed
-- **Human-in-the-Loop (HITL)** — LangGraph `interrupt()` mechanism for low-confidence RAG retrieval and risky SQL review; resume graph execution with human-approved inputs
-- **State Persistence** — MySQL-based LangGraph checkpointer enables graph state persistence across sessions, supporting long-running interrupt/resume cycles
-- **Real-Time Streaming** — SSE-based token streaming with live agent status visualization (Trace Canvas) and interleaved RAG/graph step tracking
-- **Premium Gemini-Inspired UI** — Clean, modern dual-theme (Light/Dark) interface with real-time multi-agent trace panel and HITL approval modal
+- [项目概览](#项目概览)
+- [架构与流程](#架构与流程)
+- [核心能力](#核心能力)
+- [技术栈](#技术栈)
+- [项目结构](#项目结构)
+- [快速开始](#快速开始)
+- [配置说明](#配置说明)
+- [API 参考](#api-参考)
+- [版本路线图](#版本路线图)
 
 ---
 
-## Architecture
+## 项目概览
+
+Ragent AI 是一套可用于生产环境的**多智能体 GraphRAG 平台**。它将私有文档检索、网络搜索、结构化数据分析和**知识图谱遍历**组合起来，由专用 AI Worker 回答用户问题。平台采用 **LangGraph Supervisor-Workers** 架构，输出可溯源、可审计的答案。
+
+主要能力包括：
+
+- **多智能体协作**：Supervisor 负责意图识别与调度；支持 RAG、局部图搜索、全局图搜索、网络搜索、数据分析和直接回答等专用智能体，并可并行分发任务。
+- **GraphRAG 语义网络**：文档入库时由 LLM 抽取实体与关系，使用 Neo4j 存储图谱，借助 Leiden 社区聚类与分层摘要形成全局语义视图。
+- **图向量混合检索**：稠密向量（Qwen text-embedding-v1，1536 维）、BM25 稀疏向量和图三元组通过三通道 RRF 融合；支持局部搜索（向量检索后图扩展）与全局搜索（社区摘要匹配）。
+- **三级分层切块**：L1/L2/L3 分别为 1200/600/300 字符，使用滑动窗口和自动合并检索器；L2 用于图谱抽取，L3 用于向量索引。
+- **人工介入（HITL）**：低置信度 RAG 检索和高风险 SQL 均可通过 LangGraph `interrupt()` 暂停，待人工确认后恢复执行。
+- **状态持久化**：基于 MySQL 的 LangGraph checkpointer 跨会话保存状态，支持长时间中断/恢复。
+- **实时流式输出**：基于 SSE 的 token 流和 Trace Canvas，实时展示智能体状态及 RAG/图检索步骤。
+- **双主题界面**：Gemini 风格的明暗主题、实时多智能体追踪面板和 HITL 审批弹窗。
+
+---
+
+## 架构与流程
+
+### 总体架构
+
+以下为与英文原稿一致的完整组件关系图；类名、接口名与存储产品名保持原文，以便和代码一一对应。
+
+<!-- 保留旧版图示源文本供变更记录使用；不在 Markdown 中渲染。
+┌────────────────────────────────────────────────────────────────────────┐
+│                         前端（Vue 3 SPA）                               │
+│     聊天 UI · 会话管理 · 知识库上传                                    │
+│     Trace Canvas（智能体状态 + 时间线）· HITL 审批弹窗                  │
+└──────────────────────────────┬─────────────────────────────────────────┘
+                               │ SSE / HTTP
+┌──────────────────────────────▼─────────────────────────────────────────┐
+│                         FastAPI 应用层                                  │
+│  ┌────────────────────────┐  ┌─────────────────────────────────────┐  │
+│  │  api/routes.py          │  │  schemas.py                         │  │
+│  │  REST + SSE 接口        │  │  Pydantic 请求/响应模型             │  │
+│  └───────────┬─────────────┘  └─────────────────────────────────────┘  │
+│              │                                                          │
+│  ┌───────────▼──────────────────────────────────────────────────────┐  │
+│  │        LangGraph Supervisor-Workers 编排器（v8）                 │  │
+│  │                                                                   │  │
+│  │                    ┌──────────────┐                               │  │
+│  │                    │ Supervisor   │（意图路由）                   │  │
+│  │                    └──────┬───────┘                               │  │
+│  │        ┌──────────────────┼─────────────────────────────────┐    │  │
+│  │        │                  │                                 │    │  │
+│  │ ┌──────▼──────┐ ┌────────▼───────┐ ┌─────────▼─────────┐   │    │  │
+│  │ │ RAG 专家    │ │ 局部图搜索      │ │ 全局图搜索         │   │    │  │
+│  │ └──────┬──────┘ └────────┬───────┘ └─────────┬─────────┘   │    │  │
+│  │        │                  │                   │             │    │  │
+│  │ ┌──────▼──────┐ ┌────────▼───────┐ ┌─────────▼─────────┐   │    │  │
+│  │ │ 网络搜索器   │ │ 数据分析师      │ │ 直接回答 → END    │   │    │  │
+│  │ │（Tavily）   │ │（Text-to-SQL） │ │（跳过 Critique）   │   │    │  │
+│  │ └──────┬──────┘ └────────┬───────┘ └───────────────────┘   │    │  │
+│  │        └──────────────────┼─────────────────────────────┘   │    │  │
+│  │                           │                                  │    │  │
+│  │                    ┌──────▼───────┐                          │    │  │
+│  │                    │ Synthesize    │ ← 多 Worker 合并         │    │  │
+│  │                    └──────┬───────┘                          │    │  │
+│  │                           │                                  │    │  │
+│  │                    ┌──────▼───────┐                          │    │  │
+│  │                    │ Critique      │ ← 事实核查（v8）          │    │  │
+│  │                    └──────┬───────┘                          │    │  │
+│  │                  有效 │   │ 无效，重试 < 2                    │    │  │
+│  │                   ┌────┘   └────┐                            │    │  │
+│  │                   ▼             ▼                            │    │  │
+│  │                  END        ┌─────────┐                       │    │  │
+│  │                             │ Replan  │ → Supervisor（v8）     │    │  │
+│  │                             └─────────┘                       │    │  │
+│  └───────────────────────────────────────────────────────────────────┘  │
+│                             │                                            │
+│  ┌──────────────────────────▼───────────────────────────────────────┐  │
+│  │                       RAG 管线（LangGraph）                       │  │
+│  │ retrieve → grade → [rewrite → retrieve_expanded → grade_v2]      │  │
+│  │                     ↑ 第 2 次失败时 force_interrupt               │  │
+│  └──────────────────────────┬───────────────────────────────────────┘  │
+│                             │                                            │
+│  ┌──────────────────────────▼───────────────────────────────────────┐  │
+│  │                            检索引擎                                │  │
+│  │ 混合向量检索 · 重排 · 自动合并 · 查询改写                          │  │
+│  │ 局部图搜索（向量 → 一跳扩展）· 全局图搜索（社区摘要匹配）          │  │
+│  │ 三通道 RRF 融合（Dense + Sparse + Graph）                         │  │
+│  └───────────────────────────────────────────────────────────────────┘  │
+└──────────────────────────────┬──────────────────────────────────────────┘
+                               │
+        ┌──────────────────────┼──────────────────────┬──────────────┐
+        │                      │                      │              │
+┌───────▼───────┐  ┌───────────▼──────────┐  ┌───────▼───────┐  ┌──▼─────┐
+│    Milvus     │  │       MySQL          │  │     Redis     │  │ Neo4j  │
+│   向量数据库  │  │ 会话 · 消息          │  │   热缓存      │  │ 图存储 │
+│ HNSW + Sparse │  │ 块 · 摘要            │  │  HITL 锁     │  │        │
+│   + 摘要      │  │ 图检查点              │  │              │  │        │
+└───────────────┘  └──────────────────────┘  └───────────────┘  └────────┘
+```
+
+```text
+Vue 3 单页应用
+  └─ 聊天界面、会话管理、知识库上传、Trace Canvas、HITL 审批
+                         │ SSE / HTTP
+FastAPI 应用层
+  └─ REST/SSE 接口、Pydantic 请求与响应模型
+                         │
+LangGraph Supervisor-Workers 编排器
+  ├─ Supervisor：意图路由与并行派发
+  ├─ Planner：复杂问题拆解（v8）
+  ├─ RAG Specialist：文档检索
+  ├─ Local / Global Graph Search：图谱检索
+  ├─ Web Searcher：Tavily 网络搜索
+  ├─ Data Analyst：Text-to-SQL
+  ├─ Direct Answer：闲聊与通用问题
+  ├─ Synthesize：汇总多个 Worker 的结果
+  └─ Critique → Replan：事实核查与最多两次自我纠正
+                         │
+检索引擎
+  └─ 混合向量检索、重排、自动合并、查询改写、局部/全局图检索、RRF 融合
+                         │
+Milvus（向量库） · MySQL（会话、文档、检查点） · Redis（缓存、HITL 锁） · Neo4j（图谱）
+```
+-->
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────┐
 │ Frontend (Vue 3 SPA)                                                 │
-│ Chat UI · Session Management · Knowledge Base Upload · Trace Canvas  │
-│ HITL Approval Modal                                                  │
+│ Chat UI · Sessions · Knowledge Upload · Trace Canvas · HITL Modal    │
 └──────────────────────────────────┬───────────────────────────────────┘
                                    │ SSE / HTTP
 ┌──────────────────────────────────▼───────────────────────────────────┐
 │ FastAPI Application Layer                                            │
-│ api/routes.py: REST + SSE endpoints · schemas.py: Pydantic models    │
+│ api/routes.py: REST + SSE · schemas.py: Pydantic Models              │
 └──────────────────────────────────┬───────────────────────────────────┘
                                    │
 ┌──────────────────────────────────▼───────────────────────────────────┐
 │ LangGraph Supervisor-Workers Orchestrator (v8)                       │
-│ Supervisor → [RAG Specialist | Local Graph | Global Graph]           │
-│            → [Web Searcher  | Data Analyst | Direct Answer → END]    │
+│ Supervisor → [RAG | Local Graph | Global Graph]                      │
+│            → [Web Search | Data Analyst | Direct Answer → END]       │
 │ Workers → Synthesize → Critique → valid: END | retry < 2: Replan     │
 └──────────────────────────────────┬───────────────────────────────────┘
                                    │
@@ -85,8 +184,7 @@ Ragent AI is a production-ready **multi-agent GraphRAG platform** that orchestra
                                    │
 ┌──────────────────────────────────▼───────────────────────────────────┐
 │ Retrieval Engine                                                     │
-│ Hybrid Vector Search · Reranking · Auto-Merging · Query Rewrite      │
-│ Local / Global Graph Search · Three-Channel RRF                      │
+│ Hybrid Search · Reranking · Auto-Merge · Local/Global Graph · RRF    │
 └──────────────────────────────────┬───────────────────────────────────┘
                                    │
       ┌──────────────┬─────────────┼─────────────┬──────────────┐
@@ -97,25 +195,26 @@ Ragent AI is a production-ready **multi-agent GraphRAG platform** that orchestra
 └───────────┘ └─────────────┘ └──────────┘ └───────────┘
 ```
 
-### Agent Routing Flow (v8)
+### 智能体路由流程（v8）
 
-```
+用户问题先由 Supervisor 判断意图：复杂问题会先交给 Planner 生成执行计划；随后可路由至一个或多个检索/分析 Worker。结果由 Synthesize 汇总，Critique 使用已检索上下文交叉核查草稿答案。核查失败时，Replan 将缺失信息作为补充查询重新交由 Supervisor 执行，最多重试两次。无需检索的直接回答会跳过核查。
+
+```text
                          ┌──────────────┐
-                         │  User Query  │
+                         │  用户问题    │
                          └──────┬───────┘
                                 │
                      ┌──────────▼──────────┐
                      │    Supervisor       │
-                     │   (Intent Router)   │
+                     │    意图路由器       │
                      └──────────┬──────────┘
                                 │
           ┌─────────────────────┼─────────────────────────────┐
           │                     │                             │
           ▼                     ▼                             ▼
  ┌─────────────────┐  ┌────────▼────────┐  ┌─────────────────▼──┐
- │   Planner (v8)  │  │ RAG Specialist  │  │ Local/Global Graph │
- │ Complex query   │  │ (Doc retrieval) │  │ Search             │
- │ decomposition   │  │                 │  │                    │
+ │  Planner（v8）  │  │ RAG Specialist  │  │ 局部/全局图搜索     │
+ │  复杂查询拆解   │  │  文档检索       │  │                    │
  └────────┬────────┘  └────────┬────────┘  └────────┬───────────┘
           │                    │                     │
           └────────────────────┼─────────────────────┘
@@ -123,634 +222,199 @@ Ragent AI is a production-ready **multi-agent GraphRAG platform** that orchestra
           ┌────────────────────┼─────────────────────┐
           │                    │                     │
  ┌────────▼────────┐  ┌────────▼────────┐  ┌─────────▼─────────┐
- │  Web Searcher   │  │  Data Analyst   │  │  Direct Answer    │
- │  (Tavily API)   │  │  (Text-to-SQL)  │  │  → END (skip      │
- │                 │  │                 │  │    Critique)       │
+ │  网络搜索器      │  │  数据分析师      │  │  直接回答          │
+ │ （Tavily API）   │  │ （Text-to-SQL） │  │  → END（跳过核查） │
  └────────┬────────┘  └────────┬────────┘  └───────────────────┘
           │                    │
           └────────────────────┼──────────────────────┘
                                │
                     ┌──────────▼──────────┐
-                    │    Synthesize       │ ← Multi-Worker
-                    │  (Merge Answers)    │    Aggregation
+                    │    Synthesize       │ ← 多 Worker 结果聚合
+                    │     合并答案         │
                     └──────────┬──────────┘
                                │
                     ┌──────────▼──────────┐
-                    │     Critique (v8)   │ ← Fact-checking
-                    │  (Cross-verify with │
-                    │   retrieved context)│
+                    │   Critique（v8）    │ ← 事实核查
+                    │ 与检索上下文交叉验证 │
                     └──────────┬──────────┘
                                │
                     ┌──────────┼──────────┐
                     │                     │
-                 valid                invalid, retry<2
+                  有效              无效，重试 < 2
                     │                     │
                     ▼                     ▼
                ┌─────────┐         ┌───────────┐
-               │  Answer  │         │  Replan   │ → Supervisor
-               └─────────┘         └───────────┘   (self-correction)
+               │  答案   │         │  Replan   │ → Supervisor（自我纠正）
+               └─────────┘         └───────────┘
 ```
 
-### Document Ingestion Flow
+### 文档入库流程
 
-```
-Document Upload
-    │
-    ├── 1. L1/L2/L3 Hierarchical Chunking
-    ├── 2. L3 → Milvus Vector Indexing
-    ├── 3. L1/L2 → MySQL Parent Chunk Store
-    │
-    └── 4. L2 Text → LLM Entity/Relation Extraction → Neo4j
-              │
-              ├── MERGE Entity nodes (name, type, description)
-              ├── MERGE RELATES_TO edges (predicate, weight)
-              └── Bind source_chunks (L3 chunk IDs) to edges
+```text
+文档上传
+  ├─ L1/L2/L3 三级分层切块
+  ├─ L3 → Milvus 向量索引
+  ├─ L1/L2 → MySQL 父块存储
+  └─ L2 文本 → LLM 实体/关系抽取 → Neo4j
+       ├─ MERGE 实体节点（名称、类型、描述）
+       ├─ MERGE RELATES_TO 边（谓词、权重）
+       └─ 将来源 L3 块 ID 绑定到关系边
 ```
 
-### GraphRAG Offline Pipeline
+### GraphRAG 离线流程
 
-```
-Neo4j Full Graph
-    │
-    ├── 1. Pull all Entity + RELATES_TO → NetworkX DiGraph
-    ├── 2. Leiden (Louvain) Community Detection
-    ├── 3. Write community_id back to Neo4j entities
-    ├── 4. Per-community: collect entities + relations
-    ├── 5. LLM generates community summary (200-400 words)
-    └── 6. Summaries → Vectorized → Milvus + MySQL
+```text
+Neo4j 全量图谱
+  ├─ 拉取 Entity 与 RELATES_TO，构建 NetworkX DiGraph
+  ├─ Leiden（Louvain）社区发现
+  ├─ 将 community_id 写回 Neo4j 实体
+  ├─ 按社区收集实体与关系
+  ├─ LLM 生成 200–400 词的社区摘要
+  └─ 摘要向量化并写入 Milvus + MySQL
 ```
 
 ---
 
-## Key Features
+## 核心能力
 
-### Multi-Agent System
+### 多智能体与检索
 
-| Feature | Description |
-|---------|-------------|
-| **Supervisor Router** | LLM-powered intent analysis for intelligent agent selection (supports single + parallel dispatch via LangGraph `Send`) |
-| **Planner (v8)** | Complex query decomposition: breaks multi-hop questions into step-by-step execution plans targeting different agents |
-| **RAG Specialist** | Full RAG pipeline: hybrid retrieval → rerank → auto-merge → grading → rewrite → expanded retrieval |
-| **Local Graph Search** | Vector search → Neo4j entity lookup → 1-hop graph expansion → merged context for multi-hop reasoning |
-| **Global Graph Search** | Direct community summary matching in Milvus for panoramic/overview questions |
-| **Web Searcher** | Tavily API integration for real-time web search with automatic fallback to RAG on API failure |
-| **Data Analyst** | Text-to-SQL worker: discovers schema → generates read-only SQL → executes → presents insights |
-| **Direct Answer** | Handles greetings, chitchat, and general knowledge queries without retrieval overhead |
-| **Critique (v8)** | Post-generation fact-checking: cross-verifies draft answer against retrieved contexts; triggers self-correction loop on hallucination |
-| **Replan (v8)** | Self-correction: injects missing information as supplement queries and re-routes to Supervisor (max 2 retries) |
-| **Parallel Dispatch** | Supervisor can route to multiple workers simultaneously; synthesize node aggregates results |
+| 能力 | 说明 |
+|---|---|
+| Supervisor 路由 | 基于 LLM 的意图分析，可单路或通过 LangGraph `Send` 并行派发。 |
+| Planner（v8） | 将多跳复杂问题拆成可由不同智能体处理的分步计划。 |
+| RAG Specialist | 混合检索、重排、自动合并、相关性评分、改写与扩展检索的完整 RAG 流程。 |
+| 局部图搜索 | 向量搜索 → Neo4j 实体定位 → 一跳邻居扩展，适合多跳推理。 |
+| 全局图搜索 | 在 Milvus 中匹配社区摘要，适合全景与概览类问题。 |
+| Web Searcher | 集成 Tavily 实时搜索；API 失败时自动回退至 RAG。 |
+| Data Analyst | 探测 schema、生成只读 SQL、执行并呈现数据洞察。 |
+| Direct Answer | 无检索开销地处理问候、闲聊和通用知识问题。 |
+| Critique / Replan | 将草稿与检索上下文交叉核验；发现幻觉时补充查询并重新路由。 |
 
-### GraphRAG Engine
+### GraphRAG 引擎
 
-| Feature | Description |
-|---------|-------------|
-| **Entity/Relation Extraction** | LLM structured output extracts (Subject, Predicate, Object) triples from L2 chunks during document ingestion |
-| **Entity Deduplication** | Neo4j MERGE with unique constraint on entity name prevents duplicate nodes across documents |
-| **Source Provenance** | Every graph edge stores `source_chunks` — the list of L3 chunk IDs it was extracted from, enabling full traceability |
-| **Leiden Clustering** | Community detection groups related entities into thematic clusters; community IDs written back to Neo4j |
-| **Community Summarization** | LLM generates a 200-400 word overview per community; summaries are vectorized and indexed in Milvus |
-| **Graph Local Search** | For multi-hop questions: Milvus retrieval → extract linked entities from Neo4j → 1-hop neighbor expansion |
-| **Graph Global Search** | For overview questions: match user query against community summaries in Milvus |
-| **Three-Channel RRF** | `RRF_Score = w1/(k+rank_dense) + w2/(k+rank_sparse) + w3/(k+rank_graph)` — weighted fusion of all retrieval channels |
+| 能力 | 说明 |
+|---|---|
+| 实体关系抽取 | 入库时从 L2 块中以结构化形式提取主语、谓词、宾语三元组。 |
+| 实体去重 | Neo4j `MERGE` 配合实体名唯一约束，避免跨文档重复节点。 |
+| 来源溯源 | 每条图关系保存 `source_chunks`（来源 L3 块 ID），可完整追踪证据。 |
+| Leiden 聚类 | 将相关实体划分为主题社区，并把社区 ID 回写至 Neo4j。 |
+| 社区摘要 | LLM 为每个社区生成摘要，向量化后用于全局搜索。 |
+| 三通道 RRF | `RRF_Score = w1/(k+rank_dense) + w2/(k+rank_sparse) + w3/(k+rank_graph)`。 |
 
-### Retrieval Engine
+### 查询智能与 HITL
 
-| Feature | Description |
-|---------|-------------|
-| **Hybrid Search** | Dense embeddings (Qwen text-embedding-v1) + BM25 sparse vectors, fused via RRF in Milvus |
-| **Reranking** | Post-retrieval relevance scoring via DashScope qwen3-rerank API with graceful degradation |
-| **Auto-Merging** | L3→L2→L1 hierarchical merging — when multiple sibling leaf chunks are retrieved, they collapse into the parent chunk for coherent context |
-| **Three-Level Chunking** | L1 (1200 chars) → L2 (600 chars) → L3 (300 chars) with parent-child relationship tracking |
-| **Leaf-Only Indexing** | Only leaf chunks (L3) are vectorized in Milvus; parent chunks stored in MySQL to reduce index size |
+| 能力 | 说明 |
+|---|---|
+| Step-Back Prompting | 对细节问题生成更高层问题，以扩大检索范围。 |
+| HyDE | 对模糊或概念性问题生成假设文档，用于语义检索。 |
+| 复杂查询扩展 | 组合两种策略处理多步骤问题，并进行去重。 |
+| 相关性评分 | LLM 评估召回文档；不相关时触发改写，连续两次失败时触发 HITL。 |
+| 低置信度防护 | RAG 评分两次失败后暂停图执行，人工可修改问题或补充上下文。 |
+| SQL 安全审查 | Data Analyst 生成非 SELECT SQL 时，须经人工批准或拒绝才会执行。 |
+| 会话锁 | Redis 分布式锁避免 HITL 待处理期间的并发消息（HTTP 423）。 |
 
-### Query Intelligence
+### 平台与治理能力
 
-| Feature | Description |
-|---------|-------------|
-| **Step-Back Prompting** | For specific/detail questions — generates a higher-level question to broaden retrieval scope |
-| **HyDE** | For vague/conceptual questions — generates a hypothetical document for semantic retrieval |
-| **Complex Expansion** | Multi-step questions — combines both strategies with deduplication |
-| **Relevance Grading** | LLM-based structured output grades retrieved documents; triggers rewrite if irrelevant; triggers HITL interrupt on second consecutive failure |
-
-### Human-in-the-Loop (HITL)
-
-| Feature | Description |
-|---------|-------------|
-| **Low-Confidence Defense** | RAG document grading fails twice → LangGraph `interrupt()` → human reviews and modifies query or injects context |
-| **SQL Safety Review** | Data Analyst generates non-SELECT SQL → graph pauses → human approves or rejects before execution |
-| **Session Lock** | Redis distributed lock prevents concurrent messages during HITL pending state (returns HTTP 423) |
-| **State Persistence** | MySQL-based LangGraph checkpointer saves full graph state for multi-hour interrupt/resume cycles |
-
-### Application Layer
-
-| Feature | Description |
-|---------|-------------|
-| **Streaming Responses** | SSE-based token streaming with real-time agent status events |
-| **Trace Canvas** | Right-side panel showing live agent state nodes and execution timeline |
-| **Session Management** | Multi-turn conversations persisted in MySQL with Redis caching |
-| **Conversation Summarization** | Auto-summarizes history beyond 50 turns to manage token budgets |
-| **RAG Trace** | Every response includes full retrieval audit: strategy, scores, merge decisions, source chunks |
-| **Answer Abort** | Frontend AbortController + backend StreamingResponse for mid-generation cancellation |
-| **Dual Theme** | Gemini-inspired Light/Dark theme with CSS variables; persisted to localStorage |
-| **Dead-Loop Detection** | LangGraph `recursion_limit=15` prevents infinite agent loops |
-
-### Knowledge Governance (v4.0)
-
-| Feature | Description |
-|---------|-------------|
-| **Cascading Soft-Delete** | Cross-database cascade: MySQL `is_deleted` → Milvus batch delete → Neo4j edge strip + orphan cleanup |
-| **Document Index** | `document_index` table tracks filename-level version, hash, and deletion state |
-| **Entity Resolution** | Two-stage dedup: intra-community edit-distance recall → LLM confirmation → Cypher node merge with edge inheritance |
-| **Temporal GraphRAG** | `valid_from`/`valid_to` on entities and relations; Supervisor auto-routes time-sensitive queries with year filter |
-
-### Evaluation & CI/CD (v4.0)
-
-| Feature | Description |
-|---------|-------------|
-| **Golden Dataset** | 80 hand-crafted QA pairs across 7 query types (conceptual, detail, cross_doc, global_summary, realtime, chat, data_query) with `expected_agent` for routing accuracy |
-| **Ragas Metrics** | 4 metrics (ragas 0.2.15): context_precision, context_recall, faithfulness, answer_relevancy; composite score for optimization. Note: `answer_relevancy` and `context_recall` may return NaN due to DashScope API prompt format incompatibility |
-| **3 Evaluation Modes** | `retrieval` (initial retrieval only), `pipeline` (full RAG pipeline), `e2e` (LLM generates real answer + routing accuracy + latency stats) |
-| **Routing Accuracy** | Supervisor LLM routing vs `expected_agent` comparison, per-query-type breakdown |
-| **RRF Grid Search** | `scripts/grid_search_rrf.py` — composite score optimization (0.4×precision + 0.3×faithfulness + 0.3×relevancy), graph channel support |
-| **A/B Comparison** | `--compare` flag generates diff report with metric deltas between two evaluation runs |
-| **HTML Report** | `scripts/generate_report.py` — radar chart, bar chart, routing matrix, latency distribution |
-| **CI Threshold Check** | `scripts/ci_evaluation.sh` — context_precision ≥ 0.6, faithfulness ≥ 0.7, answer_relevancy ≥ 0.6 |
-| **Unit Tests** | `tests/test_evaluation.py` — golden dataset validation, RRF fusion, metrics signatures |
-| **CI/CD Pipeline** | GitHub Actions: Docker services → DB init → pytest → import verification on every push |
-
-### Observability & High Availability (v5.0)
-
-| Feature | Description |
-|---------|-------------|
-| **Distributed Tracing** | OpenTelemetry SDK with manual spans on all LangGraph Agent nodes, Milvus queries, and Neo4j Cypher calls |
-| **Prometheus Metrics** | `/metrics` endpoint exposes 6 custom metrics: LLM token usage, Agent routing count, vector/graph/LLM latency histograms, circuit breaker state |
-| **Structured JSON Logging** | structlog replaces default logging — every log line is JSON with timestamp, level, and event fields ready for ELK/Grafana Loki ingestion |
-| **Circuit Breaker** | Protects LLM and Tavily API calls: 3 failures in 60s → circuit opens → returns fallback response → auto-recovers after cooldown |
-| **Graceful Degradation** | Neo4j query timeout (1.5s) → automatic fallback to pure Dense+Sparse vector retrieval with warning log |
-| **Exponential Backoff Retry** | tenacity-based retry on network jitter: 3 attempts with 1s→2s→4s wait for LLM generation and Milvus writes |
-| **Monitoring Stack** | Docker Compose includes Jaeger (:16686), Prometheus (:9090), and Grafana (:3000) — one command to start the full observability suite |
-
-### Cost Optimization (v6.0)
-
-| Feature | Description |
-|---------|-------------|
-| **Semantic Cache** | Milvus semantic_cache_collection + MySQL query_cache_store; cosine ≥ 0.95 → skip RAG+LLM, return cached response in ~200ms with 0 Token cost |
-| **Dynamic Model Routing** | qwen-turbo for lightweight tasks (Supervisor, Direct Answer); qwen-plus/max for heavy reasoning (Data Analyst, Graph Search) |
-| **Cache Singleflight** | Redis-based deduplication lock: 10 concurrent identical queries → only 1 penetrates to LLM, remaining 9 share cached result |
-| **Cache Invalidation** | Document soft-delete triggers automatic cache eviction; TTL-based expiration for stale entries |
-| **Benchmark Script** | `scripts/run_benchmark.py` — concurrent stress test comparing cache hit/miss latency and Token savings |
-
-### Multimodal (v7.0)
-
-| Feature | Description |
-|---------|-------------|
-| **Layout Analysis** | PyMuPDF-based PDF layout detection — separates text paragraphs from tables/images before chunking |
-| **Media Extraction** | Image/table capture from PDF pages → MinIO object storage; chunks linked via `associated_media_urls` |
-| **VLM Description** | Qwen-VL generates Chinese markdown descriptions for charts and tables |
-| **Visual Retrieval** | 4th RRF channel: text-to-image-description semantic search via Milvus |
-| **Multimodal Agent** | `multimodal_specialist` — triggered by keywords (图表/曲线/图片), retrieves visuals + generates cited answers |
-
-### Adaptive Reasoning & Self-Correction (v8.0)
-
-| Feature | Description |
-|---------|-------------|
-| **Planner Node** | Complex query decomposition into multi-step execution plans; simple queries bypass planner |
-| **Critique Node** | Post-generation fact-checking: cross-verifies draft answer against retrieved contexts via LLM |
-| **Self-Correction Loop** | Critique → replan → supervisor (max 2 retries); injects missing information as supplement queries |
-| **direct_answer Bypass** | Chat/chitchat queries skip Critique (no retrieved context to validate against) |
-| **data_analyst Bypass** | SQL query results skip Critique (structured data, not RAG-retrieved context) |
-
-### MCP Integration (v9.0)
-
-| Feature | Description |
-|---------|-------------|
-| **MCP Connection Manager** | `MCPConnectionManager` manages connections to multiple MCP Servers (SSE/stdio transport) |
-| **Dynamic Tool Registration** | MCP `tools/list` Schema → LangChain `StructuredTool` auto-conversion |
-| **Tool Semantic Retriever** | Milvus-based top-k tool recall prevents context window explosion (100+ tools) |
-| **Data Analyst Multi-Source** | Automatically discovers MCP database tools and queries them alongside local MySQL |
-| **Echarts Chart Generation** | LLM-based chart type detection + Echarts JSON config; frontend renders `echarts` code blocks |
-| **MCP API Endpoints** | `POST /mcp/connect`, `GET /mcp/servers`, `POST /mcp/disconnect/{name}` |
-
-### Ontology-Controlled Graph Extraction (v10.0)
-
-| Feature | Description |
-|---------|-------------|
-| **Domain Ontology Schema** | `backend/ontology/schema.py` — 11 entity types, 12 relation predicates, 70+ valid (subject_type, predicate, object_type) rules with wildcard support |
-| **Constrained Extraction Prompt** | Explicitly lists all allowed types and predicates; forbids LLM from inventing new categories |
-| **Pydantic Field Validators** | `EntityInfo.type` and `RelationInfo.predicate` auto-normalized via lookup tables (handles Chinese/English synonyms, LLM hallucinated types) |
-| **Post-Extraction Interceptor** | `_validate_extraction()` filters: invalid entity types, missing subject/object, rule-violating relation directions |
-| **Type-Filtered Entity Resolution** | Cypher `WHERE a.type = b.type` — deduplication only within same entity type, prevents cross-type false merges |
-| **Graph Topology Stats** | `scripts/graph_topology_stats.py` — node/edge/orphan counts, type/predicate distributions, degree percentiles for A/B comparison |
-| **5 Evaluation Modes** | `retrieval`, `pipeline`, `e2e`, `graph` (topology snapshot), `graph_compare` (before/after diff) |
-
-### Incremental Pipeline & DevOps (v11.0)
-
-| Feature | Description |
-|---------|-------------|
-| **Document Fingerprinting** | `backend/documents/fingerprint.py` — SHA-256 file hash computed at upload time; unchanged files skip the entire pipeline |
-| **DocumentIndex Activation** | `document_index` table tracks `file_hash`, `chunk_count`, `version` per document; `upsert_document_index()` handles create/skip/update lifecycle |
-| **Incremental Graph Cleanup** | `cleanup_by_filename()` cascades: strip chunk IDs from edges → remove empty edges → remove orphan entities before re-insertion |
-| **Async Task Queue** | `arq` (Redis-backed) dispatches ingestion to `backend/pipeline/ingestion_worker.py`; upload returns HTTP 202 immediately |
-| **Sync Fallback** | If Redis is unavailable, upload falls back to synchronous processing — no availability impact |
-| **Docker Compose Full Stack** | 10 services: etcd + MinIO + Milvus + Attu + Neo4j + MySQL + Redis + Jaeger + Prometheus + Grafana + API + Worker |
-| **Resource Limits** | API container: 2G memory limit; Worker container: 4G memory limit (heavy LLM extraction) |
-
-### Adaptive Retrieval & Load-Aware Degradation (v12.0)
-
-| Feature | Description |
-|---------|-------------|
-| **Query Profiler** | `backend/agent/query_profiler.py` — lightweight intent classifier using keyword matching (60%) + Embedding cosine similarity (40%); classifies queries into L1 (factual), L2 (reasoning), L3 (macro summary) before Supervisor LLM |
-| **Dynamic RRF Weights** | `backend/rag/dynamic_rrf.py` + `config/weight_matrix.yaml` — intent-driven weight matrix replaces static env vars; L1: Dense 70%, L2: Graph 65%, L3: balanced 35-35 |
-| **Global Load Monitor** | `backend/ha/load_monitor.py` — Redis sliding-window QPS counter with 3-state machine: NORMAL (full pipeline), WARNING (skip Critique/Replan), CRITICAL (circuit-break Neo4j + Tavily) |
-| **Adaptive Degradation** | `route_after_critique` checks system state before retry; `local_graph_search_node` and `web_searcher_node` degrade under CRITICAL load |
-| **SSE Profiler Events** | New `query_profiler` and `system_state` events pushed to frontend for real-time intent visualization |
-| **Prometheus Load Metrics** | `system_load_state` (Gauge), `query_qps` (Gauge), `query_profiler_distribution` (Counter by intent level) |
-| **A/B Evaluation Script** | `scripts/run_ab_evaluation.py` — static (v11) vs dynamic (v12) comparison with per-intent RAGAS metrics and latency stats |
-| **Locust Load Test** | `scripts/run_load_test.py` — concurrent load testing with weighted task distribution across L1/L2/L3 queries |
-
-### Streaming Incremental Graph Engine (v13.0)
-
-| Feature | Description |
-|---------|-------------|
-| **Incremental Graph Clustering** | `backend/graph/incremental_clustering.py` — local patching (60% neighbor consensus) + subgraph re-clustering (Louvain on affected communities only), replacing full-graph recomputation |
-| **Dirty-Flag Summary Updates** | `CommunitySummary.is_dirty` boolean drives targeted regeneration — only dirty communities get LLM summaries, 80-100% Token savings |
-| **Redis Streams Pipeline** | `backend/pipeline/stream_queue.py` — three-stage message bus (doc_ingest → graph_extract → vector_sync) with consumer groups, dead letter handling, and pipeline chaining |
-| **Three-Stage Consumer** | `backend/pipeline/stream_consumer.py` — stateless stage handlers for parsing, LLM extraction, and Neo4j/Milvus sync |
-| **Benchmark Script** | `scripts/benchmark_incremental.py` — full Louvain vs incremental comparison across graph scales (1K/5K/20K nodes) |
-
-### Multi-Tenant RBAC & Data Isolation (v14.0)
-
-| Feature | Description |
-|---------|-------------|
-| **JWT Authentication** | OAuth2 Bearer token auth via PyJWT + passlib bcrypt; `/auth/register` and `/auth/token` endpoints; `get_current_user` FastAPI dependency injects `UserContext` (tenant_id, role, access_level) into every request |
-| **Tenant/User/Role Models** | `backend/auth/models.py` — `Tenant`, `User`, `Role` SQLAlchemy tables with FK relationships; auto-created on startup via `init_db()` |
-| **MySQL Tenant Isolation** | `tenant_id` FK on `DocumentIndex`, `ChatSession`, `ParentChunk`, `QueryCacheStore`; `server_default="1"` for backward compatibility with existing data |
-| **Milvus Pre-filtering** | `tenant_id` field added to collection schema; `retrieve_documents()` dynamically appends `expr = "tenant_id == X"` to filter before ANN search — database-level enforcement, not application-level |
-| **Neo4j Subgraph Constraint** | Entity MERGE key extended to `{name, tenant_id}`; Cypher queries add `AND a.tenant_id = $tenant_id AND b.tenant_id = $tenant_id` for subgraph-scoped traversal |
-| **Ingestion Pipeline Propagation** | `tenant_id` and `access_level` flow through upload endpoint → arq/Redis Streams → `ingestion_worker` → Milvus writer, Neo4j ingestion, and DocumentIndex upsert |
-| **LangGraph State Extension** | `SupervisorState.user_context` dict carries tenant/role info through the entire agent graph; all worker nodes (RAG, Graph, Data Analyst) extract `tenant_id` for retrieval filtering |
-| **Data Analyst SQL Isolation** | LLM prompt injects `WHERE tenant_id = X` constraint; `execute_sql` defense-in-depth blocks queries on tenant-scoped tables without `tenant_id` filter |
-| **Session Scoping** | `list_session_infos()` filters by `tenant_id`; cache keys are tenant-specific to prevent cross-tenant session leakage |
-| **Privilege Escalation Tests** | 4 red-team test cases (SEC001-SEC004) in golden dataset; `evaluate_security()` function checks low-privilege users cannot access high-privilege content |
-
-### SaaS Metering, Rate Limiting & Audit Trail (v15.0)
-
-| Feature | Description |
-|---------|-------------|
-| **Token Usage Tracking** | `backend/billing/token_tracker.py` — per-request `prompt_tokens`/`completion_tokens` recording to `token_usage_logs` table; `get_usage_summary()` aggregates by tenant over configurable period |
-| **Per-Tenant Rate Limiting** | `backend/billing/rate_limiter.py` — `TenantRateLimiter` uses Redis sliding-window counters per `tenant_id`; rules stored in `rate_limit_rules` table with tier-based QPS/token limits |
-| **Rate-Limit Middleware** | FastAPI HTTP middleware extracts tenant from JWT, checks QPS limit before request processing; returns 429 with `Retry-After` header when exceeded |
-| **SLA-Aware Degradation** | `_get_tenant_degradation(state)` in orchestrator resolves tenant SLA tier at each decision point — enterprise: full pipeline even under CRITICAL; premium: skips Critique at CRITICAL; free: skips Critique at WARNING, cache-only at CRITICAL |
-| **Audit Trail** | `backend/billing/audit.py` — immutable `audit_logs` table records every MCP tool call, SQL execution, and HITL event with `risk_level` classification |
-| **Audit Context Manager** | `AuditContext` wraps operations with before/after semantics; automatically logs exceptions as `risk_level="high"` |
-| **Billing API** | `GET /billing/usage` returns token consumption summary; `GET /billing/audit` returns paginated audit logs with action filter — both tenant-scoped |
-| **HITL Webhook** | `HITL_WEBHOOK_URL` env var triggers POST notification to tenant admin on interrupt events; non-blocking `asyncio.create_task`, 5s timeout |
-| **Frontend Auth** | Login/register UI with JWT token persistence in `localStorage`; `_authFetch()` wrapper injects `Authorization: Bearer` on all API calls; auto-logout on 401 |
-| **Config Validation** | `backend/config.py` — Pydantic `BaseSettings` validates all env vars at startup; no hardcoded fallback secrets (missing JWT_SECRET or DATABASE_URL → fatal error) |
-| **SQL Execution Safety** | Four-layer defense: SELECT-only guard, multi-statement `;` rejection, `SET TRANSACTION READ ONLY`, tenant-scoped table `tenant_id` filter enforcement |
-| **Upload Validation** | File size capped at configurable `UPLOAD_MAX_SIZE_MB` (default 50MB); oversized uploads rejected with 400 before disk I/O |
-| **Database Migrations** | Alembic initialized at `alembic/` — schema changes via `alembic revision --autogenerate` + `alembic upgrade head` |
-| **OTel OTLP Support** | Tracing auto-detects `OTEL_EXPORTER_OTLP_ENDPOINT` — uses gRPC `OTLPSpanExporter` in production, `ConsoleSpanExporter` in development |
-| **Session List Optimization** | Batch queries (`GROUP BY` + `func.count`/`func.min`) instead of N+1 per-session fetches |
-| **Test Coverage** | 65 tests covering auth, billing, rate limiting, audit, load monitor, data analyst SQL safety, SLA degradation |
-
-### Agent Workflow Platform (v16.0)
-
-| Feature | Description |
-|---------|-------------|
-| **Workflow Planner** | `backend/workflow/planner.py` — LLM 将自然语言目标拆解为 DAG 执行计划（WorkflowPlan），自动分析步骤依赖关系 |
-| **Workflow Executor** | `backend/workflow/executor.py` — 独立 LangGraph DAG 执行引擎，串行+并行，MySQL Checkpointer 持久化支持断点续跑 |
-| **WorkflowTool Abstraction** | `backend/workflow/tool_runtime.py` — 统一工具抽象层，6 个 Agent 注册到 ToolRegistry，轻量 LLM 调用替代完整 agent node |
-| **Artifact System** | `backend/workflow/artifact.py` — Report(Markdown LLM)、Excel(openpyxl)、Chart(Echarts)、CSV 交付物，持久化到 `workflow_artifacts` |
-| **Workflow API** | `POST /workflows/plan`, `POST /workflows/execute`, `GET /workflows/{id}/status`, `GET /workflows/{id}/artifacts` |
-| **Frontend Panel** | Vue 3 任务工作流面板：目标输入→Plan DAG 可视化→执行进度条→产物查看→历史记录回溯 |
-| **Model** | 3 张新表：`workflow_definitions`, `workflow_executions`, `workflow_artifacts`；Alembic 管理迁移 |
-| **Tests** | 19 个 workflow 单元测试（tool runtime + planner + executor），23 total 全绿 |
-
-### Adaptive GraphRAG (v17.0)
-
-| Feature | Description |
-|---------|-------------|
-| **6-Type Query Classification** | `backend/agent/query_profiler.py` — factoid/entity_relation/multi_hop/global_summary/temporal/comparison 六种类型，关键词+Embedding 混合分类 |
-| **RetrievalPlanner** | `backend/rag/retrieval_planner.py` — 查询类型→RetrievalPlan（通道选择+图深度+融合策略），factoid 跳 Neo4j，multi_hop 3-hop |
-| **Adaptive RRF Weights** | `config/weight_matrix.yaml` — 6 种类型独立 RRF 权重（factoid: Dense=0.8/Graph=0，multi_hop: Graph=0.85） |
-| **GraphUtilityEstimator** | `backend/rag/graph_utility_estimator.py` — 5 维启发式特征预测图检索价值，score<0.35 跳过 Neo4j（零 LLM 调用） |
-| **Orchestrator Integration** | `local_graph_search_node` + `global_graph_search_node` 动态读取 intent，条件跳过图检索/社区摘要 |
-| **Evaluation** | 23 条 benchmark，3 项评测：分类 73.9%, Plan 决策 91.3%, Overall 78.3%；50 测试全绿 |
-
-### Graph Reasoning Engine (v18.0)
-
-| Feature | Description |
-|---------|-------------|
-| **ReasoningPlanner** | `backend/rag/graph_reasoning/planning.py` — NL→结构化 ReasoningPlan（起始实体+目标关系+最大跳数） |
-| **SubgraphRetriever** | `backend/rag/graph_reasoning/subgraph.py` — 多跳 Cypher 抽取 Neo4j 子图为 NetworkX DiGraph |
-| **PathExplorer** | `backend/rag/graph_reasoning/path_explorer.py` — BFS + Beam Search 候选推理路径发现 |
-| **PathRanker** | `backend/rag/graph_reasoning/path_ranker.py` — 4 维加权排序（语义+置信度+时序+长度） |
-| **ReasoningVerifier** | `backend/rag/graph_reasoning/verifier.py` — LLM 答案-路径交叉验证（SUPPORTED/PARTIAL/UNSUPPORTED） |
-| **Multi-Hop Fix** | `graph_retriever.py` 真正 n-hop 循环扩展，不再仅 1-hop |
-| **Tests** | 47 测试全绿（15 reasoning + 32 regression） |
-
-### Memory Graph System (v19.0)
-
-| Feature | Description |
-|---------|-------------|
-| **Memory Schemas** | `backend/memory/schemas.py` — 4 种记忆类型：Fact/Preference/Task/Relation |
-| **MemoryGraphStore** | `backend/memory/store.py` — Neo4j `:Memory` 节点 MERGE + `:MENTIONS` 关系链接知识图谱 Entity |
-| **MemoryExtractor** | `backend/memory/extractor.py` — LLM 从对话末尾 10 条消息提取结构化记忆（JSON 输出） |
-| **MemoryImportance** | `backend/memory/importance.py` — 时间衰减（30 天半衰期）+ 访问频次三维评分 |
-| **MemoryRetriever** | `backend/memory/retriever.py` — 查询时检索用户记忆并格式化为 `## 用户记忆` 注入 LLM 上下文 |
-| **Brain Hook** | `chat_with_agent` / `chat_with_agent_stream` 保存后异步提取，非阻塞 |
-| **Config Toggle** | `memory_enabled: bool = False` 配置开关，默认关闭 |
-| **Tests** | 57 测试全绿（10 memory + 47 regression） |
-
-### Deep Research Engine (v20.0)
-
-| Feature | Description |
-|---------|-------------|
-| **Research Planner** | `backend/research/planner.py` — LLM 将研究目标拆解为 DAG 执行计划，自动分析任务依赖关系 |
-| **Research Executor** | `backend/research/executor.py` — DAG 执行引擎，串行+并行调度 Research Agent，断点恢复 + 实时进度持久化 |
-| **Research Agents** | `backend/research/research_agents.py` — Web/Graph/Data/Internal KB 四大代理，统一输出结构化 Evidence |
-| **Evidence Store** | `backend/research/evidence_store.py` — 证据持久化 + 多维度查询 + 覆盖率统计 |
-| **Research Reviewer** | `backend/research/reviewer.py` — 4 维加权评分（覆盖率/多样性/引用/置信度），阈值 0.70 |
-| **Gap Analyzer** | `backend/research/gap_analyzer.py` — LLM 分析证据缺口 → 自动生成补充检索查询 |
-| **Report Generator** | `backend/research/report_generator.py` — 证据驱动中文报告（Markdown），每条结论绑定 Evidence ID |
-| **Artifact Extension** | `backend/workflow/artifact.py` — 新增 PDF (reportlab) + PPTX (python-pptx) 生成 |
-| **Research API** | `backend/research/routes.py` — POST /create, GET /{id}/status/evidence/report, POST /cancel, GET /list |
-| **Frontend Panel** | 研究工作区标签页：目标输入 → 实时进度条 → 证据卡片查看 → 报告阅读 → 历史回溯 |
-| **Config** | `research_enabled: bool = True`, `research_max_review_rounds: int = 3` |
-| **Tests** | 16 测试全绿（schemas + reviewer + gap_analyzer + evidence_store + planner + executor） |
+- **应用层**：SSE 流式输出、Trace Canvas、MySQL 会话持久化与 Redis 缓存、50 轮后自动压缩历史、可审计的 RAG trace、生成中止、双主题及死循环检测。
+- **知识治理（v4）**：跨 MySQL/Milvus/Neo4j 的级联软删除，文档版本与哈希索引，两阶段实体消歧，以及支持 `valid_from`/`valid_to` 的时态 GraphRAG。
+- **评测与 CI/CD（v4）**：覆盖 7 种查询类型的 80 条 Golden QA 数据集；支持 `retrieval`、`pipeline`、`e2e`、`graph`、`graph_compare` 评测模式、RRF 网格搜索、A/B 报告和 GitHub Actions 流水线。
+- **可观测性与高可用（v5）**：OpenTelemetry 链路、Prometheus 指标、structlog JSON 日志、LLM/Tavily 熔断、Neo4j 超时降级、指数退避重试和 Jaeger/Prometheus/Grafana 监控栈。
+- **成本优化（v6）**：Milvus + MySQL 语义缓存、动态模型路由、Redis Singleflight 防击穿、文档删除驱动的缓存失效与并发基准测试。
+- **多模态（v7）**：PDF 版面分析、图片/表格抽取与 MinIO 存储、Qwen-VL 描述、视觉检索第四 RRF 通道和多模态专用智能体。
+- **MCP 集成（v9）**：支持 SSE/stdio MCP Server、动态 `StructuredTool` 注册、工具语义召回、多数据源分析与 ECharts 图表生成。
+- **本体约束（v10）**：11 类实体、12 类关系、70+ 三元组规则；受限提示词、Pydantic 校验及按类型实体消歧。
+- **增量与流式图引擎（v11–v13）**：SHA-256 文档指纹、arq 异步入库、Redis Streams 三阶段管线、增量社区重聚类及脏标记摘要重生成。
+- **多租户与 SaaS（v14–v15）**：JWT/RBAC、MySQL/Milvus/Neo4j 租户隔离、租户级限流、SLA 感知降级、Token 计量、审计日志与 Alembic 迁移。
+- **工作流、推理、记忆、研究（v16–v21）**：DAG 工作流、6 类自适应检索、图推理路径发现与核验、用户记忆图谱、证据驱动的深度研究，以及动态假设/冲突检测循环。
 
 ---
 
-## Tech Stack
+## 技术栈
 
-<table>
-<tr>
-<td><strong>Backend</strong></td>
-<td>FastAPI · Uvicorn · LangChain · LangGraph · Pydantic · SQLAlchemy</td>
-</tr>
-<tr>
-<td><strong>Frontend</strong></td>
-<td>Vue 3 (CDN) · marked.js · highlight.js · Font Awesome</td>
-</tr>
-<tr>
-<td><strong>Vector Store</strong></td>
-<td>Milvus 2.5 (HNSW + SPARSE_INVERTED_INDEX)</td>
-</tr>
-<tr>
-<td><strong>Graph Store</strong></td>
-<td>Neo4j 5.26 (Community Edition)</td>
-</tr>
-<tr>
-<td><strong>Embedding</strong></td>
-<td>Qwen text-embedding-v1 (1536-dim) · BM25 (custom impl.)</td>
-</tr>
-<tr>
-<td><strong>LLM</strong></td>
-<td>Qwen-Plus / Qwen3.6-Plus via DashScope (OpenAI-compatible API)</td>
-</tr>
-<tr>
-<td><strong>Database</strong></td>
-<td>MySQL 8.0 (sessions, messages, parent chunks, community summaries, graph checkpoints) · Redis 7.0 (hot cache, HITL locks)</td>
-</tr>
-<tr>
-<td><strong>Graph Algorithms</strong></td>
-<td>NetworkX · python-louvain (Leiden/Louvain community detection)</td>
-</tr>
-<tr>
-<td><strong>Search APIs</strong></td>
-<td>Tavily (web search) · Gaode/Amap (weather)</td>
-</tr>
-<tr>
-<td><strong>Evaluation</strong></td>
-<td>Ragas 0.2.15 · matplotlib · pytest · 3 eval modes · HTML reports (v4.0)</td>
-</tr>
-<tr>
-<td><strong>Observability</strong></td>
-<td>OpenTelemetry · Prometheus · Grafana · Jaeger · structlog (v5.0)</td>
-</tr>
-<tr>
-<td><strong>High Availability</strong></td>
-<td>pybreaker · tenacity · Neo4j query timeout (v5.0)</td>
-</tr>
-<tr>
-<td><strong>Cost Optimization</strong></td>
-<td>Semantic Cache (Milvus ANN) · Dynamic Model Routing (v6.0)</td>
-</tr>
-<tr>
-<td><strong>Infrastructure</strong></td>
-<td>Docker Compose (Milvus + etcd + MinIO + Attu + Neo4j + MySQL + Redis + Jaeger + Prometheus + Grafana + API + Worker) · GitHub Actions CI · Dockerfile</td>
-</tr>
-<tr>
-<td><strong>Auth & Multi-Tenancy</strong></td>
-<td>PyJWT · passlib[bcrypt] · FastAPI OAuth2 Depends · Tenant/User/Role models · Milvus pre-filtering · Neo4j subgraph constraint (v14.0)</td>
-</tr>
-<tr>
-<td><strong>Async Pipeline</strong></td>
-<td>arq (Redis-backed task queue) · Async ingestion worker · Sync fallback (v11.0)</td>
-</tr>
-<tr>
-<td><strong>MCP Integration</strong></td>
-<td>MCP Python SDK · SSE/stdio transport · Dynamic tool registration · Tool semantic retriever (v9.0)</td>
-</tr>
-<tr>
-<td><strong>Visualization</strong></td>
-<td>Echarts · Chart type auto-detection · Markdown echarts code block rendering (v9.0)</td>
-</tr>
-</table>
+| 层级 | 组件 |
+|---|---|
+| 后端 | FastAPI、Uvicorn、LangChain、LangGraph、Pydantic、SQLAlchemy |
+| 前端 | Vue 3（CDN）、marked.js、highlight.js、Font Awesome |
+| 向量库 | Milvus 2.5（HNSW + SPARSE_INVERTED_INDEX） |
+| 图数据库 | Neo4j 5.26 Community Edition |
+| 嵌入模型 | Qwen text-embedding-v1（1536 维）、BM25（自定义实现） |
+| 大模型 | 通过 DashScope OpenAI 兼容 API 调用 Qwen-Plus / Qwen3.6-Plus |
+| 数据与缓存 | MySQL 8.0、Redis 7.0 |
+| 图算法 | NetworkX、python-louvain（Leiden/Louvain 社区发现） |
+| 搜索与评测 | Tavily、Gaode/Amap、Ragas、matplotlib、pytest |
+| 可观测性 | OpenTelemetry、Prometheus、Grafana、Jaeger、structlog |
+| 基础设施 | Docker Compose、GitHub Actions CI、Dockerfile、arq 异步任务队列 |
 
 ---
 
-## Project Structure
+## 项目结构
 
-```
+```text
 Ragent-AI/
 ├── backend/
-│   ├── api/
-│   │   ├── app.py              # FastAPI application factory, CORS, middleware
-│   │   └── routes.py           # REST API routes (chat, sessions, documents, HITL)
-│   ├── auth/                   # Multi-tenant RBAC (v14.0)
-│   │   ├── __init__.py
-│   │   ├── models.py           # Tenant, User, Role SQLAlchemy models
-│   │   ├── jwt_handler.py      # JWT encode/decode, password hashing
-│   │   ├── dependencies.py     # UserContext dataclass, get_current_user dependency
-│   │   └── routes.py           # /auth/register, /auth/token endpoints
-│   ├── agent/
-│   │   ├── brain.py            # Conversation storage, SSE streaming, HITL resume
-│   │   ├── orchestrator.py     # LangGraph graph: 6 agents + synthesize + planner + critique + replan (v8)
-│   │   ├── tools.py            # Agent tools (weather, knowledge base, web search, graph steps)
-│   │   ├── model_router.py     # Dynamic LLM routing: turbo/plus/max by task
-│   │   ├── web_searcher.py     # Tavily web search integration + RAG fallback
-│   │   ├── data_analyst.py     # Text-to-SQL + MCP multi-data-source query
-│   │   ├── multimodal_specialist.py  # Visual retrieval: image/table description + Milvus search
-│   │   ├── mcp_client.py       # MCP connection manager (SSE/stdio transport)
-│   │   ├── chart_generator.py  # Echarts chart generation (type detection + config)
-│   │   └── tool_retriever.py   # MCP tool semantic retriever (Milvus top-k recall)
-│   ├── rag/
-│   │   ├── pipeline.py         # LangGraph RAG workflow (retrieve → grade → rewrite → expanded)
-│   │   ├── utils.py            # Hybrid retrieval, reranking, auto-merging, query expansion, 4-ch RRF
-│   │   ├── graph_retriever.py  # Graph-enhanced retrieval (local search + global search)
-│   │   └── visual_retriever.py # Visual retrieval: text-to-image-description semantic search
-│   ├── documents/
-│   │   ├── loader.py           # Three-level hierarchical document chunking (PDF/Word/Excel/MD)
-│   │   ├── graph_extractor.py  # LLM entity/relation extraction from L2 chunks (ontology-controlled v10)
-│   │   └── fingerprint.py      # SHA-256 file/chunk content fingerprinting (v11.0)
-│   ├── ontology/               # Domain ontology constraint layer (v10.0)
-│   ├── pipeline/               # Async ingestion pipeline (v11.0)
-│   │   ├── __init__.py
-│   │   ├── task_queue.py       # arq Redis task queue configuration
-│   │   └── ingestion_worker.py # Async document ingestion worker
-│   │   ├── __init__.py
-│   │   └── schema.py           # Entity types, relation predicates, triple rules, validation functions
-│   │   ├── layout_analyzer.py  # PDF layout analysis (text/image/table separation)
-│   │   ├── media_extractor.py  # Image/table extraction + MinIO upload
-│   │   └── vlm_descriptor.py   # Qwen-VL chart/table description generation
-│   ├── embedding/
-│   │   └── service.py          # Dense (Qwen API) + Sparse (BM25) embedding service
-│   ├── milvus/
-│   │   ├── client.py           # Milvus vector DB client (hybrid search, RRF, CRUD)
-│   │   └── writer.py           # Batch vectorization & Milvus ingestion
-│   ├── storage/
-│   │   ├── database.py         # MySQL connection, session factory, table init
-│   │   ├── models.py           # SQLAlchemy ORM (sessions, messages, chunks, summaries, checkpoints)
-│   │   ├── cache.py            # Redis cache utility + HITL distributed lock
-│   │   ├── checkpointer.py     # MySQLSaver — LangGraph state persistence
-│   │   ├── parent_chunk_store.py  # Parent chunk storage (MySQL + Redis cache)
-│   │   ├── doc_lifecycle.py    # Document lifecycle: soft-delete, chunk ID query (v4.0)
-│   │   ├── graph_client.py     # Neo4j driver wrapper (run_cypher / write_cypher)
-│   │   ├── graph_schema.py     # Neo4j constraints & indexes initialization
-│   │   ├── graph_ingestion.py  # Batch MERGE entities + relations into Neo4j
-│   │   └── graph_cleanup.py    # Neo4j cascade cleanup (orphan edges/nodes) (v4.0)
-│   ├── graph/
-│   │   ├── community.py        # Leiden clustering, community summarization, Milvus indexing
-│   │   └── entity_resolution.py # Two-stage entity dedup (edit-distance + LLM + merge) (v4.0)
-│   ├── evaluation/             # Automated RAG evaluation (v4.0)
-│   │   ├── __init__.py
-│   │   ├── dataset.py          # Golden dataset loader (80 QA pairs, expected_agent)
-│   │   └── metrics.py          # Ragas metrics + generate_answer + routing accuracy
-│   ├── observability/          # OpenTelemetry + Prometheus + structlog (v5.0)
-│   │   ├── __init__.py
-│   │   ├── tracing.py          # OTel init + manual span utilities
-│   │   ├── metrics.py          # Prometheus metrics + /metrics endpoint
-│   │   └── logging.py          # Structlog JSON logging configuration
-│   ├── ha/                     # High Availability modules (v5.0)
-│   │   ├── __init__.py
-│   │   ├── circuit_breaker.py  # Circuit breaker state machine
-│   │   ├── retry.py            # Exponential backoff retry decorator
-│   │   └── degradation.py      # Neo4j timeout → Dense+Sparse fallback
-│   ├── cache/                  # Semantic cache layer (v6.0)
-│   │   ├── __init__.py
-│   │   ├── semantic_cache.py   # Milvus ANN + cosine + MySQL store
-│   │   ├── singleflight.py     # Redis Singleflight anti-stampede
-│   │   └── invalidation.py     # Document delete → cache eviction
-│   ├── memory/                 # Memory Graph System (v19.0)
-│   │   ├── __init__.py
-│   │   ├── schemas.py          # MemoryNode, MemoryType, MemoryExtraction
-│   │   ├── extractor.py        # LLM 从对话提取结构化记忆
-│   │   ├── store.py            # Neo4j :Memory 节点 CRUD
-│   │   ├── retriever.py        # 查询用户记忆注入 LLM 上下文
-│   │   └── importance.py       # 时间衰减 + 频次评分
-│   ├── research/               # Deep Research Engine (v20.0)
-│   │   ├── __init__.py
-│   │   ├── schemas.py          # ResearchPlan, Evidence, ReviewResult, GapAnalysis
-│   │   ├── models.py           # ORM: ResearchExecution, ResearchEvidence, ResearchReportRecord
-│   │   ├── planner.py          # Goal → DAG 执行计划
-│   │   ├── executor.py         # DAG 执行 + 审核循环 + 实时进度
-│   │   ├── evidence_store.py   # 证据持久化 + 多维查询
-│   │   ├── research_agents.py  # Web/Graph/Data/Internal KB 研究代理
-│   │   ├── reviewer.py         # 4 维证据评分
-│   │   ├── gap_analyzer.py     # 证据缺口分析 + 补充检索
-│   │   ├── report_generator.py # 证据驱动中文报告
-│   │   └── routes.py           # /research/* API 端点
-│   └── schemas.py              # Pydantic: Chat*, Document*, HITL*, GraphEntity, QueryPlan, CritiqueResult
-│
-├── scripts/
-│   ├── run_community_clustering.py  # Offline: build graph → cluster → summarize → index
-│   ├── run_entity_resolution.py    # Offline: entity dedup pipeline (v4.0)
-│   ├── run_evaluation.py           # RAG eval: 5 modes + latency + A/B compare (v4.0/v10.0)
-│   ├── graph_topology_stats.py     # Graph topology metrics for A/B comparison (v10.0)
-│   ├── grid_search_rrf.py          # RRF weight optimization (composite score, graph channel)
-│   ├── generate_report.py          # HTML evaluation report generator
-│   ├── ci_evaluation.sh            # CI threshold check script
-│   └── run_benchmark.py            # Concurrent cache benchmark (v6.0)
-│
-├── frontend/
-│   ├── index.html              # Vue 3 SPA (chat, trace canvas, HITL modal, settings)
-│   ├── script.js               # Application logic, SSE handler, API integration
-│   ├── style.css               # Gemini-inspired dual-theme (Light/Dark)
-│   └── logo.svg                # Application logo
-│
-├── tests/
-│   ├── test_doc_lifecycle.py   # Soft-delete unit tests (v4.0)
-│   ├── test_evaluation.py      # Evaluation pipeline unit tests
-│   ├── test_v10_ontology.py    # v10 ontology schema + extraction validation tests (53 tests)
-│   ├── test_fingerprint.py     # Document fingerprint SHA-256 unit tests
-│   └── test_incremental_upload.py  # Incremental upload integration tests
-│   └── golden_dataset.json     # 80-item evaluation dataset (v4.0)
-│
-├── data/
-│   └── documents/              # Uploaded document storage
-│
-├── docs/
-│   ├── planning/                # Feature specification documents
-│   │   ├── 5.23todov2.md        # v2.0 — Multi-Agent + HITL specification
-│   │   ├── 5.24todov3.md        # v3.0 — GraphRAG requirements specification
-│   │   ├── 5.25todolistv4.md    # v4.0 — UI optimization & planning
-│   │   ├── 5.25todov5.md        # v5.0 — Observability & HA specification
-│   │   ├── 5.25todov6.md        # v6.0 — Cost optimization specification
-│   │   ├── 5.25todov7.md        # v7.0 — Multimodal upgrade specification
-│   │   ├── 5.30todov8.md        # v8.0 — Adaptive reasoning & self-correction loop
-│   │   ├── 5.30todov9.md        # v9.0 — MCP integration & data federation
-│   │   └── 5.31tdov10.md        # v10.0 — Ontology-controlled graph extraction
-│   │   └── GraphRAG-v3.0-升级计划.md  # v3.0 — Implementation plan (5 phases)
-│   ├── superpowers/plans/       # Detailed implementation plans
-│   └── img.png                  # Application screenshot
-│
-├── docker-compose.yml          # Full stack (Milvus + Neo4j + Jaeger + Prometheus + Grafana)
-├── docker-compose.ci.yml       # CI environment services (v4.0)
-├── Dockerfile                  # Application container image (v4.0)
-├── prometheus.yml              # Prometheus scrape configuration (v5.0)
-├── .github/workflows/ci.yml    # GitHub Actions CI pipeline (v4.0)
-├── pyproject.toml              # Python dependencies & project metadata
-├── start.py                    # UTF-8 startup script (uvicorn wrapper)
-├── start_worker.py             # arq async ingestion worker entrypoint (v11.0)
-├── .env.example                # Environment configuration template
-└── .env                        # Local environment configuration (gitignored)
+│   ├── api/              # FastAPI 应用工厂与 REST/SSE 路由
+│   ├── auth/             # 多租户 RBAC、JWT、认证接口
+│   ├── agent/            # 编排器、智能体工具、网络搜索、数据分析、MCP
+│   ├── rag/              # RAG 工作流、混合检索、图检索、视觉检索
+│   ├── documents/        # 文档加载、三级切块、图谱抽取、指纹
+│   ├── ontology/         # 本体约束层
+│   ├── pipeline/         # 异步入库与 Redis Streams 管线
+│   ├── embedding/        # 稠密/稀疏嵌入服务
+│   ├── milvus/           # 向量库客户端与批量写入
+│   ├── storage/          # MySQL、Redis、检查点、Neo4j 客户端及治理
+│   ├── graph/            # 社区聚类与实体消歧
+│   ├── evaluation/       # 自动化 RAG 评测
+│   ├── observability/    # 链路、指标与结构化日志
+│   ├── ha/               # 熔断、重试和降级
+│   ├── cache/            # 语义缓存与防击穿
+│   ├── memory/           # 记忆图谱
+│   └── research/         # 深度研究引擎
+├── scripts/              # 聚类、实体消歧、评测、报告与基准脚本
+├── frontend/             # Vue 3 聊天界面、SSE 逻辑和主题样式
+├── tests/                # 单元/集成测试与 Golden 数据集
+├── data/documents/       # 上传文档存储
+├── docs/                 # 功能规格、实现计划与界面截图
+├── docker-compose.yml    # 全栈 Docker 服务
+├── pyproject.toml        # Python 依赖和项目元数据
+├── start.py              # 应用启动脚本
+├── start_worker.py       # arq 异步入库 Worker 入口
+└── .env.example          # 环境变量模板
 ```
 
 ---
 
-## Getting Started
+## 快速开始
 
-### Prerequisites
+### 前置条件
 
-- **Python** 3.12+
-- **Docker** & Docker Compose
-- **MySQL** 8.0+
-- **Redis** 7.0+
-- **[uv](https://docs.astral.sh/uv/)** (recommended) or pip
+- Python 3.12+
+- Docker 与 Docker Compose
+- MySQL 8.0+
+- Redis 7.0+
+- [uv](https://docs.astral.sh/uv/)（推荐）或 pip
 
-### 1. Clone & Install
+### 1. 克隆并安装依赖
 
 ```bash
 git clone https://github.com/your-username/Ragent-AI.git
 cd Ragent-AI
 
-# Option A: uv (recommended)
+# 方案 A：uv（推荐）
 uv sync
 
-# Option B: pip
+# 方案 B：pip
 python -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
+source .venv/bin/activate        # Windows：.venv\Scripts\activate
 pip install -e .
 ```
 
-### 2. Configure Environment
+### 2. 配置环境变量
 
-Copy `.env.example` to `.env` and fill in your keys:
+将 `.env.example` 复制为 `.env`，然后填入密钥：
 
 ```env
-# ===== LLM (DashScope / Qwen) =====
+# ===== LLM（DashScope / Qwen）=====
 ARK_API_KEY=your_dashscope_api_key
 MODEL=qwen-plus
 BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
@@ -759,7 +423,7 @@ GRADE_MODEL=qwen-plus
 SUPERVISOR_MODEL=qwen-plus
 MAX_TOKENS=8192
 
-# ===== Database =====
+# ===== 数据库 =====
 DATABASE_URL=mysql+pymysql://root:password@localhost:3306/agent_chat
 REDIS_URL=redis://localhost:6379/0
 
@@ -769,465 +433,301 @@ MILVUS_PORT=19530
 MILVUS_VECTOR_DIM=1536
 MILVUS_SEARCH_TOP_K=20
 
-# ===== Neo4j (GraphRAG) =====
+# ===== Neo4j（GraphRAG）=====
 NEO4J_URI=bolt://localhost:7687
 NEO4J_USER=neo4j
 NEO4J_PASSWORD=password
 
-# ===== Rerank (optional, degrades gracefully) =====
+# ===== 重排（可选；不可用时会优雅降级）=====
 RERANK_MODEL=qwen3-rerank
 RERANK_BINDING_HOST=https://dashscope.aliyuncs.com/compatible-mode/v1
 RERANK_API_KEY=your_dashscope_api_key
 RERANK_TOP_K=10
 
-# ===== Web Search (optional) =====
+# ===== 网络搜索（可选）=====
 TAVILY_API_KEY=your_tavily_api_key
 
-# ===== Tools (optional) =====
+# ===== 工具（可选）=====
 AMAP_WEATHER_API=https://restapi.amap.com/v3/weather/weatherInfo
 AMAP_API_KEY=your_amap_key
 ```
 
-### 3. Start Infrastructure
+### 3. 启动基础设施
 
 ```bash
-# Start full stack (Milvus + Neo4j)
+# 启动完整服务栈（Milvus + Neo4j 等）
 docker compose up -d
 
-# Verify health
+# 检查服务健康状态
 docker compose ps
 ```
 
-| Service | Port | Description |
-|---------|------|-------------|
-| Milvus | 19530 | Vector database (gRPC) |
-| Milvus Health | 9091 | Health check endpoint |
-| MinIO | 9000/9001 | Object storage / Console |
-| Attu | 8080 | Milvus web management UI |
-| Neo4j | 7474 | Neo4j Browser (HTTP) |
-| Neo4j Bolt | 7687 | Neo4j driver protocol |
+| 服务 | 端口 | 说明 |
+|---|---:|---|
+| Milvus | 19530 | 向量数据库（gRPC） |
+| Milvus Health | 9091 | 健康检查接口 |
+| MinIO | 9000/9001 | 对象存储 / 控制台 |
+| Attu | 8080 | Milvus Web 管理界面 |
+| Neo4j | 7474 | Neo4j Browser（HTTP） |
+| Neo4j Bolt | 7687 | Neo4j 驱动协议 |
 
-### 4. Create Database
+### 4. 创建数据库
 
 ```sql
 CREATE DATABASE IF NOT EXISTS agent_chat CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
-Tables (`chat_sessions`, `chat_messages`, `parent_chunks`, `community_summaries`, `graph_checkpoints`, `graph_checkpoint_writes`) are auto-created on first launch via SQLAlchemy's `Base.metadata.create_all()`.
+首次启动时，SQLAlchemy 的 `Base.metadata.create_all()` 会自动创建 `chat_sessions`、`chat_messages`、`parent_chunks`、`community_summaries`、`graph_checkpoints` 和 `graph_checkpoint_writes` 等表。
 
-### 5. Launch Application
+### 5. 启动应用
 
 ```bash
-# Option A: uv
+# 方案 A：uv
 uv run python start.py
 
-# Option B: python
+# 方案 B：python
 python start.py
 ```
 
-Open in browser:
-- **Frontend**: http://127.0.0.1:8000/
-- **API Docs**: http://127.0.0.1:8000/docs
-- **Neo4j Browser**: http://localhost:7474
+在浏览器中打开：
 
-### 6. Run GraphRAG Offline Pipeline
+- **前端**：http://127.0.0.1:8000/
+- **API 文档**：http://127.0.0.1:8000/docs
+- **Neo4j Browser**：http://localhost:7474
 
-After uploading documents, run the community clustering script:
+### 6. 执行 GraphRAG 离线流程
+
+上传文档后，运行社区聚类脚本：
 
 ```bash
 uv run python scripts/run_community_clustering.py
 ```
 
-This will:
-1. Pull the full knowledge graph from Neo4j
-2. Run Leiden community detection
-3. Generate LLM-powered community summaries
-4. Index summaries into Milvus for global search
+该脚本会：
+
+1. 从 Neo4j 拉取完整知识图谱；
+2. 执行 Leiden 社区发现；
+3. 使用 LLM 生成社区摘要；
+4. 将摘要索引至 Milvus，以支持全局搜索。
 
 ---
 
-## Configuration
+## 配置说明
 
-### Environment Variables
+### 主要环境变量
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `ARK_API_KEY` | — | DashScope API key (required) |
-| `MODEL` | `qwen-plus` | Chat model for Worker agents |
-| `SUPERVISOR_MODEL` | `qwen-plus` | Model for Supervisor routing (falls back to MODEL) |
-| `BASE_URL` | — | LLM API endpoint (OpenAI-compatible) |
-| `EMBEDDER` | `text-embedding-v1` | Embedding model name |
-| `GRADE_MODEL` | `qwen-plus` | Document grading model |
-| `MAX_TOKENS` | `8192` | Max output tokens |
-| `DATABASE_URL` | `mysql+pymysql://...` | MySQL connection string |
-| `REDIS_URL` | `redis://localhost:6379/0` | Redis connection string |
-| `MILVUS_HOST` | `127.0.0.1` | Milvus server host |
-| `MILVUS_PORT` | `19530` | Milvus server port |
-| `MILVUS_COLLECTION` | `embeddings_collection` | Milvus collection name |
-| `MILVUS_VECTOR_DIM` | `1536` | Embedding dimension |
-| `MILVUS_SEARCH_TOP_K` | `20` | Initial retrieval candidate count |
-| `NEO4J_URI` | `bolt://localhost:7687` | Neo4j Bolt protocol URI |
-| `NEO4J_USER` | `neo4j` | Neo4j username |
-| `NEO4J_PASSWORD` | `password` | Neo4j password |
-| `RERANK_MODEL` | `qwen3-rerank` | Rerank model name (qwen3-rerank via native API, gte-rerank via compatible API) |
-| `RERANK_TOP_K` | `10` | Rerank output candidates |
-| `TAVILY_API_KEY` | — | Tavily web search API key (optional) |
-| `AMAP_API_KEY` | — | Gaode weather API key (optional) |
-| `AUTO_MERGE_ENABLED` | `true` | Enable hierarchical auto-merging |
-| `AUTO_MERGE_THRESHOLD` | `2` | Min sibling chunks to trigger merge |
-| `LEAF_RETRIEVE_LEVEL` | `3` | Leaf chunk level for retrieval |
-| `WEB_SEARCH_MAX_RESULTS` | `5` | Max web search results |
-| `RRF_WEIGHT_DENSE` | `0.4` | RRF dense channel weight (v4.0) |
-| `RRF_WEIGHT_SPARSE` | `0.3` | RRF sparse channel weight (v4.0) |
-| `RRF_WEIGHT_GRAPH` | `0.3` | RRF graph channel weight (v4.0) |
-| `ENTITY_SIM_THRESHOLD` | `0.75` | Entity dedup edit-distance threshold (v4.0) |
-| `OTEL_ENABLED` | `false` | Enable OpenTelemetry tracing (v5.0) |
-| `METRICS_ENABLED` | `true` | Enable Prometheus /metrics endpoint (v5.0) |
-| `LOG_LEVEL` | `INFO` | Log level: DEBUG / INFO / WARNING (v5.0) |
-| `LOG_FORMAT` | `json` | Log format: json / console (v5.0) |
-| `NEO4J_QUERY_TIMEOUT` | `1.5` | Neo4j Cypher query timeout in seconds (v5.0) |
-| `CACHE_SIMILARITY_THRESHOLD` | `0.95` | Semantic cache cosine similarity threshold (v6.0) |
-| `CACHE_TTL_SECONDS` | `86400` | Cache entry TTL in seconds (v6.0) |
-| `MODEL_TURBO` | `qwen-turbo` | Lightweight task model (v6.0) |
-| `MODEL_MAX` | `qwen-max` | Heavy reasoning model (v6.0) |
+| 变量 | 默认值 | 说明 |
+|---|---|---|
+| `ARK_API_KEY` | — | DashScope API 密钥（必填） |
+| `MODEL` | `qwen-plus` | Worker 智能体聊天模型 |
+| `SUPERVISOR_MODEL` | `qwen-plus` | Supervisor 路由模型；未设置时回退至 `MODEL` |
+| `BASE_URL` | — | OpenAI 兼容 LLM API 地址 |
+| `EMBEDDER` | `text-embedding-v1` | 嵌入模型名称 |
+| `GRADE_MODEL` | `qwen-plus` | 文档相关性评分模型 |
+| `MAX_TOKENS` | `8192` | 最大输出 token 数 |
+| `DATABASE_URL` | `mysql+pymysql://...` | MySQL 连接字符串 |
+| `REDIS_URL` | `redis://localhost:6379/0` | Redis 连接字符串 |
+| `MILVUS_HOST` / `MILVUS_PORT` | `127.0.0.1` / `19530` | Milvus 服务地址与端口 |
+| `MILVUS_COLLECTION` | `embeddings_collection` | Milvus collection 名称 |
+| `MILVUS_VECTOR_DIM` | `1536` | 嵌入向量维度 |
+| `MILVUS_SEARCH_TOP_K` | `20` | 初始召回候选数 |
+| `NEO4J_URI` | `bolt://localhost:7687` | Neo4j Bolt URI |
+| `NEO4J_USER` / `NEO4J_PASSWORD` | `neo4j` / `password` | Neo4j 凭据 |
+| `RERANK_MODEL` / `RERANK_TOP_K` | `qwen3-rerank` / `10` | 重排模型与输出候选数 |
+| `TAVILY_API_KEY` | — | Tavily 网络搜索 API 密钥（可选） |
+| `AMAP_API_KEY` | — | 高德天气 API 密钥（可选） |
+| `AUTO_MERGE_ENABLED` / `AUTO_MERGE_THRESHOLD` | `true` / `2` | 是否启用及触发分层自动合并的最小同级块数 |
+| `LEAF_RETRIEVE_LEVEL` | `3` | 用于检索的叶子块层级 |
+| `WEB_SEARCH_MAX_RESULTS` | `5` | 网络搜索最大结果数 |
+| `RRF_WEIGHT_DENSE` / `SPARSE` / `GRAPH` | `0.4` / `0.3` / `0.3` | 三个 RRF 通道的权重（v4） |
+| `ENTITY_SIM_THRESHOLD` | `0.75` | 实体去重编辑距离阈值（v4） |
+| `OTEL_ENABLED` | `false` | 是否启用 OpenTelemetry（v5） |
+| `METRICS_ENABLED` | `true` | 是否暴露 Prometheus `/metrics`（v5） |
+| `LOG_LEVEL` / `LOG_FORMAT` | `INFO` / `json` | 日志级别与格式（v5） |
+| `NEO4J_QUERY_TIMEOUT` | `1.5` | Neo4j Cypher 查询超时秒数（v5） |
+| `CACHE_SIMILARITY_THRESHOLD` | `0.95` | 语义缓存余弦相似度阈值（v6） |
+| `CACHE_TTL_SECONDS` | `86400` | 缓存条目 TTL（秒，v6） |
+| `MODEL_TURBO` / `MODEL_MAX` | `qwen-turbo` / `qwen-max` | 轻量与重推理任务模型（v6） |
 
-### Chunking Parameters
+### 切块参数
 
-| Level | Chunk Size | Overlap | Purpose |
-|-------|-----------|---------|---------|
-| L1 (Root) | 1200 chars | 240 chars | Topical context unit · Graph extraction source |
-| L2 (Mid) | 600 chars | 120 chars | Intermediate grouping · Graph extraction source |
-| L3 (Leaf) | 300 chars | 60 chars | Vectorized retrieval unit |
+| 层级 | 块大小 | 重叠长度 | 用途 |
+|---|---:|---:|---|
+| L1（根） | 1200 字符 | 240 字符 | 主题上下文单元、图谱抽取来源 |
+| L2（中间） | 600 字符 | 120 字符 | 中间聚合单元、图谱抽取来源 |
+| L3（叶） | 300 字符 | 60 字符 | 向量化检索单元 |
 
 ---
 
-## API Reference
+## API 参考
 
-### Chat
+### 聊天
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/chat` | Synchronous chat (returns full response) |
-| `POST` | `/chat/stream` | SSE streaming chat with agent status events |
+| 方法 | 接口 | 说明 |
+|---|---|---|
+| `POST` | `/chat` | 同步聊天，返回完整响应 |
+| `POST` | `/chat/stream` | 携带智能体状态事件的 SSE 流式聊天 |
 
-### HITL (Human-in-the-Loop)
+### HITL（人工介入）
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/chat/hitl/resume` | Resume a paused graph after human intervention |
+| 方法 | 接口 | 说明 |
+|---|---|---|
+| `POST` | `/chat/hitl/resume` | 人工干预后恢复暂停的图执行 |
 
-**SSE Event Types** (streamed during `/chat/stream`):
+`/chat/stream` 会推送以下 SSE 事件：
 
-| Event | Description |
-|-------|-------------|
-| `routing` | Supervisor routing decision (agent + reason) |
-| `agent_start` | Agent node began execution |
-| `agent_done` | Agent node completed execution |
-| `rag_step` | RAG / Graph pipeline step (retrieval, grading, rewriting, graph expansion) |
-| `graph_expand` | Local graph search event (entity lookup, hop expansion) |
-| `community_match` | Global graph search event (community summary matching) |
-| `content` | Answer text chunk |
-| `worker_content` | Worker-level answer for trace panel |
-| `trace` | Full RAG pipeline trace (audit data) |
-| `agent_trace` | Full agent-level trace (routing, fallback, graph mode, triples count, etc.) |
-| `hitl_interrupt` | HITL interrupt triggered (graph paused, lock acquired) |
-| `error` | Error message |
+| 事件 | 说明 |
+|---|---|
+| `routing` | Supervisor 的路由决定（智能体与原因） |
+| `agent_start` / `agent_done` | 智能体节点开始/结束执行 |
+| `rag_step` | RAG/图检索步骤：检索、评分、改写、图扩展等 |
+| `graph_expand` | 局部图搜索：实体定位与跳数扩展 |
+| `community_match` | 全局图搜索：社区摘要匹配 |
+| `content` / `worker_content` | 最终答案文本块 / Trace 面板中的 Worker 答案 |
+| `trace` / `agent_trace` | 完整 RAG 审计轨迹 / 智能体级追踪数据 |
+| `hitl_interrupt` | 触发 HITL 中断，图已暂停且已获得锁 |
+| `error` | 错误信息 |
 
-### Sessions
+### 会话、指标、研究与文档
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/sessions` | List all sessions |
-| `GET` | `/sessions/{id}` | Get session messages |
-| `DELETE` | `/sessions/{id}` | Delete a session |
+| 方法 | 接口 | 说明 |
+|---|---|---|
+| `GET` | `/sessions` | 列出全部会话 |
+| `GET` | `/sessions/{id}` | 获取会话消息 |
+| `DELETE` | `/sessions/{id}` | 删除会话 |
+| `GET` | `/metrics` | Prometheus 指标：Token 用量、延迟、路由、熔断器等 |
+| `POST` | `/research/create` | 创建并启动研究任务 |
+| `GET` | `/research/list` | 列出用户的研究执行记录 |
+| `GET` | `/research/{id}` | 获取研究状态和进度 |
+| `GET` | `/research/{id}/evidence` | 列出已收集的证据 |
+| `GET` | `/research/{id}/report` | 获取生成的研究报告 |
+| `POST` | `/research/{id}/cancel` | 取消运行中的研究 |
+| `GET` | `/documents` | 列出文档及其块数量 |
+| `POST` | `/documents/upload` | 上传并向量化文档（SSE 进度）；同时触发图谱抽取 |
+| `DELETE` | `/documents/{filename}` | 删除文档及其向量 |
 
-### Metrics (v5.0)
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/metrics` | Prometheus metrics endpoint (token usage, latency, routing, circuit breaker) |
-
-### Research (v20.0)
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/research/create` | Create and start a new research task |
-| `GET` | `/research/list` | List user's research executions |
-| `GET` | `/research/{id}` | Get research status + progress |
-| `GET` | `/research/{id}/evidence` | List collected evidence items |
-| `GET` | `/research/{id}/report` | Get generated research report |
-| `POST` | `/research/{id}/cancel` | Cancel running research |
-
-### Documents
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/documents` | List all documents with chunk counts |
-| `POST` | `/documents/upload` | Upload & vectorize a document (SSE progress); triggers graph extraction |
-| `DELETE` | `/documents/{filename}` | Delete document & its vectors |
-
-> Full interactive API documentation is available at `/docs` (Swagger UI) when the application is running.
+应用启动后，可访问 `/docs`（Swagger UI）查看完整交互式 API 文档。
 
 ---
 
-## Roadmap
+## 版本路线图
 
-### v2.0 — Multi-Agent + HITL ✓
+| 版本 | 已完成能力 |
+|---|---|
+| v2.0 | 多智能体 Supervisor-Workers、并行派发、Text-to-SQL、HITL、MySQL 状态持久化、Redis 锁、Trace Canvas 与双主题界面。 |
+| v3.0 | Neo4j GraphRAG、实体/关系抽取、局部与全局图搜索、Leiden 聚类、社区摘要、三通道 RRF。 |
+| v4.0 | 知识治理：软删除、文档生命周期、实体消歧、时态图谱、Golden 评测集、Ragas、A/B 报告与 CI/CD。 |
+| v5.0 | OpenTelemetry、Prometheus、结构化日志、熔断、超时降级、重试及完整可观测性服务栈。 |
+| v6.0 | 语义缓存、动态模型路由、Singleflight、防陈旧缓存和并发成本/延迟基准。 |
+| v7.0 | PDF 多模态解析、图像/表格抽取、Qwen-VL 描述、视觉检索和多模态智能体。 |
+| v8.0 | Planner、Critique、Replan 和最多两次的自我纠正循环。 |
+| v9.0 | MCP 连接管理、动态工具注册、工具语义检索、多源数据分析与 ECharts。 |
+| v10.0 | 受领域本体约束的图谱抽取、类型校验与图拓扑评测。 |
+| v11–v13 | 文档指纹、异步增量入库、负载感知自适应检索、Redis Streams 与增量图聚类。 |
+| v14–v15 | 多租户 RBAC、数据隔离、SaaS 计量、限流、审计与迁移。 |
+| v16–v21 | Agent 工作流、自适应 GraphRAG、图推理、记忆图谱、深度研究、假设驱动的证据图谱与冲突检测。 |
+| 后续计划 | 侧栏会话名称编辑、刷新页面后的 HITL 状态恢复、Markdown/PDF 对话导出、D3 图谱可视化、实体级引用链接。 |
 
-- [x] Multi-Agent Supervisor-Workers architecture (4 agents)
-- [x] Parallel worker dispatch via LangGraph `Send`
-- [x] Data Analyst (Text-to-SQL) agent
-- [x] HITL interrupt/resume (RAG low confidence + SQL approval)
-- [x] MySQL LangGraph checkpointer (state persistence)
-- [x] Redis distributed lock (HITL concurrency guard)
-- [x] Web search → RAG automatic fallback
-- [x] Dead-loop detection (recursion_limit=15)
-- [x] Frontend Trace Canvas (agent status + timeline)
-- [x] Frontend HITL approval modal
-- [x] Gemini-inspired dual-theme UI
+### 逐项交付清单
 
-### v3.0 — GraphRAG Semantic Network ✓
+#### v2.0 — 多智能体与 HITL ✓
 
-- [x] Neo4j graph database deployment (Docker Compose)
-- [x] Graph client + schema initialization (constraints & indexes)
-- [x] LLM entity/relation extraction during document ingestion
-- [x] Neo4j MERGE with entity deduplication + source_chunk binding
-- [x] Local Graph Search node (vector → Neo4j entity → 1-hop expansion)
-- [x] Global Graph Search node (community summary matching)
-- [x] Leiden (Louvain) community detection + hierarchical summarization
-- [x] Community summaries indexed to Milvus + MySQL
-- [x] Supervisor routing updated with graph search nodes
-- [x] Three-channel RRF fusion (dense + sparse + graph)
-- [x] Frontend agent labels for graph search workers
-- [x] SSE graph_expand / community_match events (brain.py)
-- [x] Frontend trace panel graph event handling (script.js)
+- [x] 四个智能体的 Supervisor-Workers 架构与 LangGraph `Send` 并行派发。
+- [x] Data Analyst（Text-to-SQL）、网络搜索失败回退 RAG、`recursion_limit=15` 死循环防护。
+- [x] RAG 低置信度与 SQL 审批的 HITL 中断/恢复；MySQL checkpointer 状态持久化与 Redis 分布式锁。
+- [x] 前端 Trace Canvas、HITL 审批弹窗及 Gemini 风格明暗主题。
 
-### v4.0 — Knowledge Governance & Evaluation Pipeline ✓
+#### v3.0 — GraphRAG 语义网络 ✓
 
-- [x] Cross-database cascading soft-delete (MySQL → Milvus → Neo4j)
-- [x] Document lifecycle state machine (DocumentIndex table + versioning)
-- [x] Neo4j orphan node/edge garbage collection
-- [x] Two-stage entity resolution (edit-distance + LLM confirmation + Cypher merge)
-- [x] Temporal knowledge graph (valid_from / valid_to on entities and relations)
-- [x] Temporal sensitivity routing in Supervisor
-- [x] Golden evaluation dataset (80 QA pairs across 7 query types with expected_agent)
-- [x] Ragas automated evaluation pipeline (4 metrics: precision, recall, faithfulness, relevancy; ragas 0.2.15, DashScope API partial compatibility)
-- [x] 3 evaluation modes: retrieval, pipeline, e2e (with LLM answer generation)
-- [x] Routing accuracy evaluation (Supervisor vs expected_agent)
-- [x] RRF weight grid search with composite score optimization + graph channel
-- [x] A/B comparison report with metric diffs
-- [x] HTML evaluation report (radar chart + bar chart + routing matrix + latency)
-- [x] CI threshold check script (ci_evaluation.sh)
-- [x] Evaluation unit tests (test_evaluation.py)
-- [x] RRF weights configurable via environment variables
-- [x] GitHub Actions CI/CD pipeline
-- [x] Dockerfile for application containerization
-- [x] Entity resolution CLI script (`scripts/run_entity_resolution.py`)
+- [x] Docker Compose 中部署 Neo4j，初始化图谱 schema、约束与索引。
+- [x] 文档入库时进行 LLM 实体/关系抽取，实体去重并绑定来源 chunk。
+- [x] 局部图搜索（向量 → 实体 → 一跳扩展）与全局图搜索（社区摘要匹配）。
+- [x] Leiden/Louvain 社区发现与分层摘要；社区摘要写入 Milvus 和 MySQL。
+- [x] Dense、Sparse、Graph 三通道 RRF 融合，以及图搜索 SSE 事件和前端追踪展示。
 
-### v5.0 — Observability & High Availability ✓
+#### v4.0 — 知识治理与评测 ✓
 
-- [x] OpenTelemetry distributed tracing (manual spans on Agent nodes + Milvus + Neo4j)
-- [x] Prometheus `/metrics` endpoint (6 custom metrics)
-- [x] structlog structured JSON logging
-- [x] Circuit breaker for LLM and Tavily API (3 failures → OPEN → fallback)
-- [x] Neo4j query timeout with graceful degradation to Dense+Sparse
-- [x] Exponential backoff retry for LLM generation and DB writes
-- [x] Docker Compose monitoring stack (Jaeger + Prometheus + Grafana)
-- [x] Grafana pre-configured with Prometheus data source
+- [x] MySQL → Milvus → Neo4j 跨库级联软删除、DocumentIndex 生命周期状态机、孤儿节点/边清理。
+- [x] 编辑距离召回、LLM 确认、Cypher 合并组成的两阶段实体消歧；实体与关系支持 `valid_from` / `valid_to`。
+- [x] 80 条 Golden QA、7 类查询、路由准确率评测、Ragas 评测和 retrieval/pipeline/e2e 三种模式。
+- [x] RRF 权重网格搜索、A/B 差异报告、HTML 雷达/柱状/路由矩阵/延迟报告、CI 阈值脚本。
+- [x] GitHub Actions CI/CD、Dockerfile、实体消歧 CLI。
 
-### v6.0 — Cost & Latency Optimization ✓
+#### v5.0 — 可观测性与高可用 ✓
 
-- [x] Semantic cache layer (Milvus ANN + MySQL store, cosine ≥ 0.95 threshold)
-- [x] Dynamic model routing (qwen-turbo for lightweight, qwen-plus/max for heavy)
-- [x] Redis Singleflight cache stampede protection
-- [x] Event-driven cache invalidation on document soft-delete
-- [x] TTL-based cache expiration
-- [x] Concurrent benchmark script (cache hit/miss latency + Token comparison)
+- [x] Agent 节点、Milvus、Neo4j 的 OpenTelemetry 手工 Span；Prometheus `/metrics` 六项自定义指标。
+- [x] structlog JSON 日志；LLM 与 Tavily 三次失败熔断及恢复。
+- [x] Neo4j 查询超时后降级至 Dense+Sparse；LLM 生成和数据库写入使用指数退避重试。
+- [x] Docker Compose 监控栈：Jaeger、Prometheus、Grafana 与预置数据源。
 
-### v7.0 — Multimodal Upgrade ✓
+#### v6.0 — 成本与延迟优化 ✓
 
-- [x] PyMuPDF layout analysis for PDF (text/image/table separation)
-- [x] Image/table extraction + MinIO upload + associated_media_urls
-- [x] Qwen-VL chart/table description generation
-- [x] 4-channel RRF fusion (Dense + Sparse + Graph + Visual)
-- [x] Neo4j ImageNode/TableNode constraints
-- [x] Multimodal Specialist Agent (keyword-triggered visual retrieval)
-- [x] Supervisor routing updated with multimodal route
+- [x] Milvus ANN + MySQL 的语义缓存（余弦相似度阈值 0.95）。
+- [x] 轻量任务使用 qwen-turbo、重推理任务使用 qwen-plus/max 的动态模型路由。
+- [x] Redis Singleflight 防缓存击穿、文档软删除驱动缓存失效、TTL 过期与并发基准测试。
 
-### v8.0 — Adaptive Reasoning & Self-Correction Loop ✓
+#### v7.0 — 多模态升级 ✓
 
-- [x] GraphState extension: `query_plan`, `critique_result`, `retry_count`, `draft_answer`
-- [x] Planner node: complex query decomposition into multi-step execution plans
-- [x] Critique node: LLM-driven cross-verification of draft answers against retrieved contexts
-- [x] Replan node: inject missing information as supplement queries for re-retrieval
-- [x] Self-correction loop: Critique → replan → supervisor (max 2 retries)
-- [x] New SSE events: `plan_generated`, `critique_feedback`, `self_correction`
-- [x] Frontend Trace Canvas: planner/critique agent nodes with distinct styling
-- [x] Fix: multimodal_specialist missing edge to synthesize
-- [x] direct_answer bypasses Critique (闲聊无检索上下文，跳过事实核查避免无效重试)
+- [x] PyMuPDF 版面分析，区分 PDF 文本、图像、表格；媒体上传 MinIO 并与 chunk 关联。
+- [x] Qwen-VL 生成图表/表格中文描述，视觉通道加入四通道 RRF。
+- [x] Neo4j ImageNode/TableNode、关键词触发的 Multimodal Specialist 与视觉检索回答。
 
-### v9.0 — MCP Integration & Data Federation ✓
+#### v8.0 — 自适应推理与自我纠正 ✓
 
-- [x] MCP connection manager: SSE/stdio transport, tools/list, tools/call
-- [x] Dynamic tool registration: MCP tools → LangChain StructuredTool auto-conversion
-- [x] Data Analyst multi-source: local MySQL + MCP external databases (PostgreSQL, Salesforce, etc.)
-- [x] Tool semantic retriever: Milvus-based top-k tool recall (prevents context window explosion)
-- [x] Echarts chart generation: LLM-based chart type detection + config generation
-- [x] Frontend Echarts rendering: markdown `echarts` code block → live chart
-- [x] MCP SSE events: `mcp_tool_call`, `mcp_tool_result` in Trace Canvas
-- [x] Planner DAG support: dependencies + input_mapping for multi-step workflows
-- [x] SupervisorState `tool_outputs` for cross-step data passing
+- [x] GraphState 新增 `query_plan`、`critique_result`、`retry_count`、`draft_answer`。
+- [x] Planner 拆解复杂问题；Critique 对草稿与检索上下文交叉验证；Replan 注入补充信息。
+- [x] Critique → Replan → Supervisor 最多两次自我纠正；新增相关 SSE 事件与 Trace Canvas 样式。
+- [x] 修复 multimodal_specialist 缺失的 synthesize 边；直接回答绕过无效事实核查。
 
-### v10.0 — Ontology-Controlled Graph Extraction ✓
+#### v9.0 — MCP 集成与数据联邦 ✓
 
-- [x] Domain ontology schema: 11 entity types, 12 relation predicates, 70+ triple rules
-- [x] Pydantic field validators: auto-normalize LLM hallucinated types/predicates
-- [x] Constrained extraction prompt: explicit type/predicate whitelist
-- [x] Post-extraction interceptor: `_validate_extraction()` filters violations
-- [x] Manual JSON parsing: DashScope `source`/`target` → `subject`/`object` field mapping
-- [x] Type-filtered entity resolution: `a.type = b.type` Cypher constraint
-- [x] Graph topology stats script: node/edge/orphan/type/predicate/degree metrics
-- [x] Extended evaluation: `graph` and `graph_compare` modes in `run_evaluation.py`
-- [x] Topology charts in HTML report: type distribution, before/after comparison
-- [x] 53 unit tests + full integration test (extraction → ingestion → topology stats)
+- [x] MCP 连接管理器支持 SSE/stdio、`tools/list`、`tools/call`。
+- [x] MCP 工具自动转换为 LangChain `StructuredTool`，Milvus top-k 工具召回避免上下文膨胀。
+- [x] Data Analyst 同时支持本地 MySQL 与外部 MCP 数据源；ECharts 自动检测图表类型并渲染。
+- [x] Planner 支持带依赖和 `input_mapping` 的 DAG，`tool_outputs` 支持跨步骤传值。
 
-### v11.0 — Incremental Pipeline & DevOps ✓
+#### v10.0 — 本体控制的图谱抽取 ✓
 
-- [x] Document fingerprinting: SHA-256 file hash, skip unchanged uploads
-- [x] DocumentIndex activation: file_hash, chunk_count, version tracking
-- [x] Incremental graph cleanup: `cleanup_by_filename()` cascade (strip → prune → orphans)
-- [x] Fix Milvus `is_deleted` phantom field: set `False` on insert
-- [x] Async task queue: `arq` (Redis-backed) + `ingestion_worker.py`
-- [x] Sync fallback: graceful degradation if Redis unavailable
-- [x] Docker Compose full stack: MySQL, Redis, API, Worker services with resource limits
-- [x] 65 unit tests (v10 + v11 fingerprint + incremental upload)
+- [x] 领域本体包含 11 类实体、12 类关系谓词、70+ 三元组合法规则。
+- [x] 显式白名单抽取提示词、Pydantic 规范化校验器和 `_validate_extraction()` 后处理拦截。
+- [x] 支持 DashScope 字段映射、按类型消歧、图拓扑统计和 `graph` / `graph_compare` 评测。
 
-### v12.0 — Adaptive Retrieval & Load-Aware Degradation ✓
+#### v11.0 — 增量管线与 DevOps ✓
 
-- [x] Query Profiler: lightweight intent classifier (keyword + embedding similarity, L1/L2/L3)
-- [x] Dynamic RRF weights: intent-driven weight matrix via YAML config (replaces static env vars)
-- [x] Global load monitor: Redis sliding-window QPS counter with NORMAL/WARNING/CRITICAL states
-- [x] Adaptive degradation: WARNING skips Critique/Replan, CRITICAL circuit-breaks Neo4j + Tavily
-- [x] SSE events: `query_profiler` and `system_state` pushed to frontend
-- [x] Prometheus metrics: `system_load_state`, `query_qps`, `query_profiler_distribution`
-- [x] Locust load testing script with L1/L2/L3 query coverage
-- [x] A/B evaluation script: static vs dynamic chain comparison
-- [x] 37 new unit/integration tests, 118 total passing with real databases
+- [x] 上传计算 SHA-256 指纹；不变文档跳过完整管线；DocumentIndex 记录哈希、块数与版本。
+- [x] `cleanup_by_filename()` 先剥离边上的块 ID，再清理空边与孤儿实体。
+- [x] 基于 Redis 的 arq 异步任务队列和不可用时的同步回退；完整 Docker 服务栈与资源限制。
 
-### v13.0 — Streaming Incremental Graph Engine ✓
+#### v12.0 — 自适应检索与负载降级 ✓
 
-- [x] Incremental clustering: local patching (neighbor consensus) + subgraph re-clustering (Louvain on affected communities)
-- [x] Dirty-flag summary regeneration: `is_dirty` on CommunitySummary, targeted LLM calls
-- [x] Redis Streams message queue: three-stage pipeline with consumer groups
-- [x] Three-stage consumer: doc_ingest → graph_extract → vector_sync
-- [x] Benchmark script: full vs incremental time comparison + Token cost analysis
-- [x] 10 new unit tests for incremental clustering
+- [x] Query Profiler 使用关键词与嵌入相似度分类 L1/L2/L3 查询；YAML 意图权重矩阵取代静态权重。
+- [x] Redis 滑动窗口 QPS 监控 NORMAL/WARNING/CRITICAL 三态；高负载时跳过 Critique/Replan 或熔断 Neo4j/Tavily。
+- [x] 推送 `query_profiler`、`system_state` SSE 事件，新增 Prometheus 负载指标、Locust 和 A/B 测试。
 
-### v14.0 — Multi-Tenant RBAC & Data Isolation ✓
+#### v13.0 — 流式增量图引擎 ✓
 
-- [x] Auth package: Tenant/User/Role SQLAlchemy models, JWT handler (PyJWT + passlib bcrypt), UserContext dependency
-- [x] Auth endpoints: `/auth/register` (create user + tenant), `/auth/token` (OAuth2 password grant)
-- [x] MySQL tenant_id: FK on DocumentIndex, ChatSession, ParentChunk, QueryCacheStore with server_default
-- [x] Milvus tenant_id: field added to collection schema; pre-filtering via `expr` in hybrid_retrieve
-- [x] Neo4j tenant_id: entity MERGE key extended to `{name, tenant_id}`; Cypher subgraph constraint
-- [x] Ingestion propagation: tenant_id flows through upload → arq/Redis Streams → worker → all stores
-- [x] SupervisorState.user_context: tenant/role info propagated through entire agent graph
-- [x] Data Analyst SQL isolation: LLM prompt constraint + execute_sql defense-in-depth check
-- [x] Session scoping: list_session_infos filters by tenant_id; tenant-specific cache keys
-- [x] Privilege escalation evaluation: 4 red-team test cases + evaluate_security function
-- [x] 47 tests passing (12 integration, 9 auth, 9 isolation, 13 evaluation, 4 fingerprint)
+- [x] 邻居共识局部修补与受影响社区的子图重聚类，避免每次重算全图。
+- [x] `CommunitySummary.is_dirty` 只重生成脏社区摘要，降低 Token 开销。
+- [x] Redis Streams 三阶段消息总线（`doc_ingest → graph_extract → vector_sync`）与消费者组、死信处理。
 
-### v15.0 — SaaS Metering, Rate Limiting & Audit Trail ✓
+#### v14.0 — 多租户 RBAC 与数据隔离 ✓
 
-- [x] Token usage tracking: `token_usage_logs` table with per-request prompt/completion token recording
-- [x] Per-tenant rate limiting: Redis sliding-window QPS limiter with `rate_limit_rules` table
-- [x] Rate-limit middleware: FastAPI HTTP middleware returns 429 with Retry-After header
-- [x] SLA-aware degradation: enterprise/premium/free tiers with different degradation levels under load
-- [x] Audit trail: `audit_logs` table with immutable logging for MCP tool calls, SQL execution, HITL events
-- [x] Audit context manager: `AuditContext` with automatic risk level classification on success/failure
-- [x] Billing API: `GET /billing/usage` (token summary) + `GET /billing/audit` (paginated audit logs)
-- [x] HITL webhook: POST to `HITL_WEBHOOK_URL` on interrupt events for admin notification
-- [x] 40 tests passing (v14+v15 combined: 28 billing + 12 privilege escalation)
+- [x] Tenant/User/Role SQLAlchemy 模型、JWT、注册和 OAuth2 密码授权接口。
+- [x] MySQL `tenant_id` 外键、Milvus 检索表达式预过滤、Neo4j 子图范围约束。
+- [x] `tenant_id` 与 `access_level` 贯穿上传、队列、入库、SupervisorState、RAG/Graph/Data Analyst。
+- [x] SQL 强制租户过滤、租户级会话和缓存隔离，以及四个权限升级红队测试。
 
-### v16.0 — Agent Workflow Platform ✓
+#### v15.0 — SaaS 计量、限流与审计 ✓
 
-- [x] Workflow Planner: LLM 目标拆解为 DAG 执行计划（`POST /workflows/plan`）
-- [x] Workflow Executor: LangGraph DAG 引擎，串行+并行执行（`POST /workflows/execute`）
-- [x] WorkflowTool 抽象: 6 Agent 统一注册为 WorkflowTool，轻量 LLM 调用
-- [x] Artifact System: Report/Excel/Chart/CSV 交付物生成 + 持久化
-- [x] Workflow API: plan/execute/status/artifacts/list 全链路
-- [x] Frontend Panel: 任务工作流标签页，DAG 可视化，进度条，产物查看，历史记录
-- [x] 23 tests passing (19 workflow + 4 audit)
-
-### v17.0 — Adaptive GraphRAG ✓
-
-- [x] 6-Type Query Classification: factoid/entity_relation/multi_hop/global_summary/temporal/comparison
-- [x] RetrievalPlanner: query-type→RetrievalPlan 通道选择 + 图深度决策
-- [x] Adaptive RRF: 6 种类型独立 weight_matrix，query_type 优先查找
-- [x] GraphUtilityEstimator: 5 维启发式预测图检索价值，低分跳过 Neo4j
-- [x] Orchestrator Integration: graph nodes 动态读取 intent 条件跳过检索
-- [x] Evaluation: 23 条 benchmark, Overall 78.3%
-- [x] 50 tests passing (8 planner + 5 utility + 13 profiler + 10 rrf + 14 other)
-
-### v18.0 — Graph Reasoning Engine ✓
-
-- [x] ReasoningPlanner: NL→结构化 ReasoningPlan（起始实体+最大跳数+推理策略）
-- [x] SubgraphRetriever: 多跳 Cypher → NetworkX DiGraph 子图抽取
-- [x] PathExplorer: BFS + Beam Search 候选推理路径发现
-- [x] PathRanker: 4 维加权路径排序（语义+置信度+时序+长度）
-- [x] ReasoningVerifier: LLM 答案-路径交叉验证
-- [x] Multi-hop fix: graph_retriever 真正 n-hop 循环扩展
-- [x] 47 tests passing (15 reasoning + 32 regression)
-
-### v19.0 — Memory Graph System ✓
-
-- [x] Memory Schemas: Fact/Preference/Task/Relation 四种记忆类型
-- [x] MemoryGraphStore: Neo4j `:Memory` 节点 + `:MENTIONS` 关系链接 Entity
-- [x] MemoryExtractor: LLM 提取对话结构化记忆（JSON）
-- [x] MemoryImportance: 时间衰减 + 访问频次评分
-- [x] MemoryRetriever: 用户记忆上下文注入 LLM prompt
-- [x] Brain Hook: 对话保存后异步提取，Config toggle 控制
-- [x] 57 tests passing (10 memory + 47 regression)
-
-### v20.0 — Deep Research Engine ✓
-
-- [x] Research Planner: LLM 将研究目标拆解为 DAG 执行计划（3~6 子任务，依赖关系自动分析）
-- [x] Research Executor: DAG 执行引擎，串行+并行调度 4 个 Research Agent，支持断点恢复
-- [x] Research Agents: Web/Graph/Data/Internal KB 四大研究代理，统一输出结构化证据
-- [x] Evidence Store: 证据持久化 + 多维度查询 + 统计（来源/置信度/覆盖率）
-- [x] Research Reviewer: 4 维证据评分（覆盖率 35% + 多样性 20% + 引用 25% + 置信度 20%）
-- [x] Gap Analyzer: LLM 缺失分析 → 自动补充检索，Collect→Review→Gap→Collect 循环（max 3 rounds）
-- [x] Report Generator: 证据驱动中文研究报告（Markdown/PDF/PPTX），每条结论绑定 Evidence ID
-- [x] Research API: /research/create/status/evidence/report/cancel/list 全链路
-- [x] Frontend Research Workspace: 进度实时监控 + 证据卡片查看 + 报告阅读 + 历史回溯
-- [x] 性能优化: qwen-turbo + max_tokens=1024 + 精简中文提示词，Planner 74s→6.6s（11x）
-- [x] UI 升级: GPT 风格侧边栏收起、统一三面板大厂审美、类型筛选历史记录、弹出模态框查看结果
-- [x] 34 tests passing (16 research + 18 evidence_graph)
-
-### v21.0 — Dynamic Research Agent ✓
-
-- [x] Hypothesis Generator: LLM 从研究目标生成 2~4 个竞争性假设（H1/H2/H3），每个假设独立验证
-- [x] Evidence Graph: Neo4j 证据图谱（`:EvidenceNode` + `:SUPPORTS`/`:REFUTES` 关系），替代 v20 平面列表
-- [x] Conflict Detector: LLM 逐对比较跨假设证据，检测 factual/inferential/contextual 矛盾
-- [x] Question Expander: 从证据冲突和未验证假设自动生成追问，触发 Hypothesis→Evidence→Conflict→Question 动态循环
-- [x] Confidence Estimator: 多维度置信度评分（来源权威度 20% + 交叉验证 40% + 反驳惩罚 30% + 引用质量 10%）
-- [x] Executor 重构: 假设驱动动态循环——假设生成→证据收集→冲突检测→追问展开→再次收集
-- [x] 前端证据图谱可视化: Echarts 力导向图（绿色=高置信度，红线=证据矛盾）+ 假设卡片 + 矛盾告警
-- [x] 34 tests passing (16 v20 + 18 v21)
-- [x] **Workflow 合并入 Research**: 任务工作流页面移除，功能统一到研究工具（rag_specialist 真正调用 Milvus 检索）
-
-### v7.x — Planned
-
-- [ ] Editable session names in sidebar
-- [ ] HITL state recovery on page refresh (polling endpoint)
-- [ ] Conversation export (Markdown / PDF)
-- [ ] Graph visualization panel in frontend (D3.js force graph)
-- [ ] Entity-level citation links in answers
+- [x] `token_usage_logs` 记录请求 token；按租户、时段汇总用量。
+- [x] 基于 Redis 滑动窗口的租户限流、429/`Retry-After` 中间件和分级 SLA 降级策略。
+- [x] 不可变审计日志记录 MCP、SQL、HITL 事件；`AuditContext` 自动划分风险等级。
+- [x] 租户范围的 Billing API、HITL Webhook、前端 JWT 认证、配置校验、SQL/上传安全和 Alembic 迁移。
 
 ---
 
 <div align="center">
 
-**Built with LangGraph · Milvus · Neo4j · FastAPI · Vue 3**
+**基于 LangGraph · Milvus · Neo4j · FastAPI · Vue 3 构建**
 
 </div>
